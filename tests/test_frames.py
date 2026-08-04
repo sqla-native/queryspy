@@ -9,7 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from queryspy import record
-from queryspy._frames import _greenlet_frames, _roots, _walk, capture_app_frame
+from queryspy._frames import (
+    _greenlet_frames,
+    _is_library_frame,
+    _roots,
+    _walk,
+    capture_app_frame,
+)
 
 from .conftest import User
 
@@ -31,9 +37,27 @@ def test_walk_gives_up_past_the_depth_cap(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_no_app_frame_anywhere_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    """With this file treated as library code, nothing is attributable."""
-    monkeypatch.setattr("queryspy._frames._ROOTS", (*_roots(), str(__file__)[: -len("x.py")]))
+    """Nothing attributable on the stack and no greenlet chain -> no frame.
+
+    The depth cap is the lever rather than the root list, because what sits
+    above pytest on the stack depends on how it was invoked: `python -m pytest`
+    tops out in `<frozen runpy>` (filtered as a pseudo-file), while the `pytest`
+    console script tops out in `bin/pytest`, which is under no sysconfig root
+    and so reads as application code. Capping the walk makes the assertion hold
+    either way.
+    """
+    monkeypatch.setattr("queryspy._frames._MAX_DEPTH", 0)
     assert capture_app_frame() is None
+
+
+@pytest.mark.parametrize("filename", ["<frozen runpy>", "<string>", "<stdin>"])
+def test_pseudo_filenames_are_never_app_code(filename: str) -> None:
+    """These are not source lines anyone can open, whatever the root list says."""
+    assert _is_library_frame(filename, ())
+
+
+def test_real_paths_outside_the_roots_are_app_code() -> None:
+    assert not _is_library_frame("/srv/app/services/users.py", ("/usr/lib/python3.12",))
 
 
 def test_greenlet_frames_is_empty_on_the_main_greenlet() -> None:
