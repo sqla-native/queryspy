@@ -1,0 +1,123 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "queryspy"
+version = "0.1.0"
+description = "N+1 and query-budget detection for SQLAlchemy 2.0, sync and async"
+readme = "README.md"
+authors = [{ name = "Rodrigo Nogueira", email = "rodrigo.b.nogueira@gmail.com" }]
+license = { text = "MIT" }
+keywords = [
+    "sqlalchemy",
+    "n+1",
+    "nplusone",
+    "orm",
+    "pytest",
+    "performance",
+    "query-count",
+    "asyncio",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+requires-python = ">=3.10"
+
+# Constitution rule 2: exactly ONE runtime dependency. pytest is an extra,
+# never a dependency - queryspy must be importable in a production process.
+dependencies = ["sqlalchemy>=2.0"]
+
+[project.optional-dependencies]
+pytest = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/sqla-native/queryspy"
+Repository = "https://github.com/sqla-native/queryspy"
+Changelog = "https://github.com/sqla-native/queryspy/blob/main/CHANGELOG.md"
+
+[project.entry-points.pytest11]
+queryspy = "queryspy.pytest_plugin"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+    "aiosqlite>=0.19",
+    "greenlet>=3.0",
+    "coverage[toml]>=7.4",
+    "complexipy>=6.0",
+    "mypy>=1.9",
+    "ruff>=0.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/queryspy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["queryspy"]
+
+[tool.coverage.report]
+# Constitution rule 8: the 100% bar governs src/queryspy only.
+fail_under = 100
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ANN", "PT"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+# PT012: several tests deliberately wrap a loop in pytest.raises, because what
+# must raise is the *exit* of the context manager under test, not a statement
+# inside it. That is the behaviour being pinned, not an accident.
+"tests/*" = ["ANN", "PT012"]
+# Constitution section 6: examples are illustrative and run lighter rules.
+# B008 fires on `Depends(...)` in a parameter default, which is FastAPI's
+# documented idiom rather than the bug the rule is looking for.
+"examples/*" = ["ANN", "B008"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/queryspy"]
+
+[[tool.mypy.overrides]]
+# greenlet is an optional, lazily-imported fallback for async attribution and
+# ships no stubs. It is never a declared dependency of this package.
+module = ["greenlet"]
+ignore_missing_imports = true
+
+# Mutation testing is an occasional, targeted, LOCAL audit - never a per-PR gate
+# and never in CI. Scope every run to the file whose logic you reworked:
+#   mutmut run --paths-to-mutate src/queryspy/_detect.py
+[tool.mutmut]
+paths_to_mutate = "src/queryspy/"
+tests_dir = "tests/"

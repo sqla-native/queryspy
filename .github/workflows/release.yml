@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)release, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Trusted Publishing: OIDC only. There is no API token and no secret to
+      # rotate - the publisher is registered on PyPI under
+      # project -> Settings -> Publishing for this workflow and environment.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv pip install --system -e . --group dev build twine
+
+      - name: Verify the tag matches the declared version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          PYPROJECT="$(python -c "
+          import tomllib
+          print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])
+          ")"
+          DUNDER="$(python -c "
+          import re
+          src = open('src/queryspy/__init__.py').read()
+          print(re.search(r'__version__ = \"([^\"]+)\"', src).group(1))
+          ")"
+          echo "tag=$TAG pyproject=$PYPROJECT __version__=$DUNDER"
+          if [ "$TAG" != "v$PYPROJECT" ]; then
+            echo "::error::tag $TAG does not match pyproject version $PYPROJECT"
+            exit 1
+          fi
+          if [ "$PYPROJECT" != "$DUNDER" ]; then
+            echo "::error::pyproject version $PYPROJECT does not match __version__ $DUNDER"
+            exit 1
+          fi
+
+      - name: Run the gates
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy
+          coverage run -m pytest -q
+          coverage report
+          complexipy src/queryspy --max-complexity-allowed 15
+
+      - name: Build
+        run: |
+          python -m build
+          twine check dist/*
+
+      - name: Consumer smoke test against the built wheel
+        run: python scripts/check_packed_consumer.py
+
+      - name: Audit the production surface
+        run: python scripts/audit_production_surface.py
+
+      - name: Rebuild clean distributions
+        run: |
+          rm -rf dist
+          python -m build
+          twine check dist/*
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1

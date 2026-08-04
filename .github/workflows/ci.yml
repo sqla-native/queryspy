@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  quality:
+    name: Tests, coverage, complexity (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: uv pip install --system -e . --group dev
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Typecheck
+        run: mypy
+
+      - name: Tests with coverage
+        run: |
+          START=$SECONDS
+          coverage run -m pytest -q
+          echo $(( (SECONDS - START) * 1000 )) > test-duration-ms.txt
+          coverage report
+          coverage json -o coverage.json
+
+      # Constitution rule 5: cognitive complexity <= 15 per function. complexipy
+      # is a native binary with no dependency on a type checker, so this gate can
+      # never be held hostage by a parser's release cycle.
+      - name: Cognitive complexity gate
+        run: complexipy src/queryspy --max-complexity-allowed 15
+
+      - name: Complexity report
+        run: complexipy src/queryspy --output-format json --output complexity.json --quiet
+
+      - name: Restore base branch metrics
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: ci-data
+          key: ci-data-${{ github.base_ref }}-
+          restore-keys: ci-data-${{ github.base_ref }}-
+
+      - name: PR quality report
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const report = require('./.github/scripts/quality-report.js');
+            await report({ github, context, core });
+
+      - name: Cache metrics for the base branch
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p ci-data
+          cp coverage.json ci-data/coverage.json
+          cp complexity.json ci-data/complexity.json
+          cp test-duration-ms.txt ci-data/test-duration-ms.txt
+
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ci-data
+          key: ci-data-${{ github.ref_name }}-${{ github.sha }}
+
+      - name: Step summary
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          total = json.load(open("coverage.json"))["totals"]
+          rows = [
+              ("Statements", total["percent_covered_display"] + "%"),
+              ("Branches", f'{total["covered_branches"]}/{total["num_branches"]}'),
+              ("Missing lines", total["missing_lines"]),
+          ]
+          print("### Package quality\n")
+          print("| Metric | Value |")
+          print("| :--- | ---: |")
+          for name, value in rows:
+              print(f"| {name} | {value} |")
+          PY
+
+  test-matrix:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv pip install --system -e . --group dev
+      - run: pytest -q
+
+  sqlalchemy-floor:
+    name: Oldest supported SQLAlchemy
+    runs-on: ubuntu-latest
+    # The declared floor is sqlalchemy>=2.0: every API this library uses
+    # (do_orm_execute, ORMExecuteState.lazy_loaded_from / loader_strategy_path /
+    # is_column_load) shipped in 2.0.0. CI pins 2.0.13 rather than 2.0.0 because
+    # the *test harness* uses AsyncAttrs, which arrived in 2.0.13 - so 2.0.13 is
+    # the oldest version this suite can actually prove, not the oldest that works.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv pip install --system -e . --group dev
+      - run: uv pip install --system "sqlalchemy==2.0.13"
+      - run: python -c "import sqlalchemy; print('sqlalchemy', sqlalchemy.__version__)"
+      - run: pytest -q
+
+  packaging:
+    name: Packaging and supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv pip install --system -e . --group dev build twine
+
+      - name: Build and check distributions
+        run: |
+          python -m build
+          twine check dist/*
+
+      - name: Consumer smoke test against the built wheel
+        run: python scripts/check_packed_consumer.py
+
+      # Audits the production closure only - what `pip install queryspy` pulls
+      # in. Dev-tooling advisories are Dependabot's job and do not block a release.
+      - name: Audit the production surface
+        run: python scripts/audit_production_surface.py
