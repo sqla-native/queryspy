@@ -62,6 +62,8 @@ def test_admin_report(session): ...
 | `queryspy_fail_on = n_plus_one` | The ini equivalent of `--queryspy-strict` |
 | `queryspy_budget = 10` | Maximum statements per test |
 | `queryspy_capture_stacks = false` | Skip source attribution |
+| `--queryspy-baseline=PATH` | Tolerate findings recorded in PATH ([baselines](baseline.md)) |
+| `--queryspy-baseline-update` | Rewrite the baseline from this run instead of enforcing it |
 
 ```toml
 [tool.pytest.ini_options]
@@ -72,9 +74,16 @@ queryspy_budget = 25
 !!! tip "Cost"
 
     The wrapper stays inert unless a policy asks for something, so a suite using
-    neither the marker nor the flag pays nothing. When it is active, stack
-    capture is the main per-query cost — `queryspy_capture_stacks = false`
+    neither the marker nor the flag pays nothing.
+
+    When it is active, recording adds roughly 40% to query time — measured by
+    `scripts/benchmark.py`, which is committed so the number stays checkable.
+    About a quarter of that is stack capture; `queryspy_capture_stacks = false`
     keeps the counts and drops the source lines.
+
+    Rendering a statement to SQL is deliberately deferred until a record is
+    actually reported. Doing it eagerly, as queryspy did before 0.3, was roughly
+    half of all recording overhead on its own.
 
 ## Reports
 

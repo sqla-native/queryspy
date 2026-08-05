@@ -29,7 +29,8 @@ Every request now logs its query count, and any request that trips a detector
 logs the full report:
 
 ```
-WARNING queryspy: GET /projects - 12 queries in 41.3ms
+WARNING queryspy: GET /projects - 12 queries in 41.3ms (38.9ms in the database, 31.2ms of it in one statement:
+  SELECT task.id, task.title FROM task WHERE :param_1 = task.project_id)
 
 N+1 detected: 11 queries for Project.tasks (lazy load)
   triggered from app/api/projects.py:31 in list_projects()
@@ -47,6 +48,36 @@ N+1 detected: 11 queries for Project.tasks (lazy load)
 | `add_headers` | `True` | Add `x-queryspy-queries` / `x-queryspy-findings` |
 | `logger` | `logging.getLogger("queryspy")` | Where reports go |
 | `on_report` | `None` | Receive every `RequestReport` yourself |
+| `panel` | `False` | Serve the debug panel |
+| `panel_path` | `/__queryspy__` | Where to serve it |
+| `history` | `50` | How many requests the panel remembers |
+
+## The panel
+
+The piece FastAPI has never had an equivalent of:
+
+```python
+app.add_middleware(QuerySpyMiddleware, panel=True)
+```
+
+Then open `/__queryspy__`. Recent requests, their query counts, how much of the
+wall-clock time was actually spent in the database, and every finding with its
+source line and fix — expandable per request.
+
+A single self-contained HTML page: no CDN, no external stylesheet, nothing
+fetched from anywhere. It works offline and behind a firewall.
+
+!!! danger "Off by default, and it should stay off in production"
+
+    The panel renders SQL. Bind parameters are **never** captured anywhere in
+    queryspy — a recorded statement keeps its `:param_1` placeholders — so it
+    shows query *shapes*, never values. That is what makes it safe to look at in
+    staging. It still describes your schema in detail, and it is unauthenticated:
+    mount it where your other debug surfaces live, or gate it behind whatever you
+    already use.
+
+    History is bounded (`history=50`) so a long-running process does not grow a
+    buffer forever.
 
 ## Routing reports somewhere else
 
@@ -61,7 +92,15 @@ app.add_middleware(QuerySpyMiddleware, on_report=to_metrics)
 ```
 
 `RequestReport` carries `method`, `path`, `query_count`, `findings`,
-`duration_ms`, a `clean` property, and `render()` for the human-readable form.
+`duration_ms` (wall clock), `db_duration_ms` (time actually in the driver),
+`slowest`, a `clean` property, and `render()` for the human-readable form.
+
+Timing is reported per **request**, never per finding. Attributing milliseconds
+to a specific finding would mean correlating the ORM and cursor layers, and that
+correlation is the one thing the recorder refuses to do — see the
+[design notes](design.md). Often the headline is not the N+1 at all: twelve
+queries where one takes 31 of the 39 milliseconds is a slow query wearing an
+N+1's clothes.
 
 ## Behaviour worth knowing
 

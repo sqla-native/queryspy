@@ -4,24 +4,28 @@ Two layers, deliberately kept apart (constitution rule 6):
 
 * ``do_orm_execute`` gives ORM-level records with lazy-load attribution. This is
   where N+1 lives.
-* ``before_cursor_execute`` gives the ground-truth statement count, including
-  flushes that never reach the ORM execute hook at all.
+* ``before_cursor_execute`` / ``after_cursor_execute`` give the ground-truth
+  statement count and the time actually spent in the driver, including flushes
+  that never reach the ORM execute hook at all.
 
 They are never correlated: a single ORM execute can produce several cursor
 executions (``selectinload`` batching), and stitching the two together is
-exactly the fragility that killed ``nplusone``.
+exactly the fragility that killed ``nplusone``. That is why timing is reported
+per *window* and never per *finding* - the correlation needed to attribute
+milliseconds to a finding is the thing we refuse to do.
 
 Listeners are registered on the ``Session`` and ``Engine`` *classes*, not on
 instances. ``AsyncSession`` wraps a sync ``Session``, so class-level listeners
-cover async for free, and it sidesteps the question of whether context variables
-propagate across SQLAlchemy's greenlet bridge.
+cover async for free.
 """
 
 from __future__ import annotations
 
 import threading
+import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Engine, event
@@ -33,16 +37,31 @@ from ._frames import AppFrame, capture_app_frame
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["QueryRecord", "Recorder"]
+__all__ = ["QueryRecord", "Recorder", "SlowStatement"]
+
+_START_KEY = "_queryspy_started"
+
+
+@dataclass(frozen=True)
+class SlowStatement:
+    """The slowest single statement in a window."""
+
+    sql: str
+    duration_ms: float
 
 
 @dataclass(frozen=True)
 class QueryRecord:
     """One ORM-level statement execution."""
 
-    sql: str
-    """The statement rendered as a template - bind parameters stay as named
-    placeholders, so the same query shape with different values compares equal."""
+    statement: Any = field(repr=False)
+    """The SQLAlchemy statement object, kept rather than rendered.
+
+    Rendering costs a full compile, measured at roughly half of all recording
+    overhead, and most records never need it: the lazy-load and column-load
+    detectors key on the relationship path and the mapper. Only unclaimed
+    records and the handful that become findings pay for it. See ``sql``.
+    """
 
     is_lazy_load: bool
     """True only when ``ORMExecuteState.lazy_loaded_from`` was set.
@@ -68,6 +87,16 @@ class QueryRecord:
 
     frame: AppFrame | None
 
+    @cached_property
+    def sql(self) -> str:
+        """The statement as a template, compiled on first use and then cached.
+
+        Bind parameters stay as named placeholders, so the same query shape with
+        different values compares equal - and no parameter *values* are ever
+        captured.
+        """
+        return " ".join(str(self.statement).split())
+
 
 @dataclass
 class Recorder:
@@ -77,6 +106,8 @@ class Recorder:
     session_filter: Session | None = None
     orm_records: list[QueryRecord] = field(default_factory=list)
     cursor_count: int = 0
+    db_duration_ms: float = 0.0
+    slowest: SlowStatement | None = None
 
     @property
     def query_count(self) -> int:
@@ -90,6 +121,11 @@ class Recorder:
     def findings(self, *, threshold: int = DEFAULT_THRESHOLD) -> list[Finding]:
         """Every problem visible in what has been recorded so far, worst first."""
         return detect(self.orm_records, threshold=threshold)
+
+    def _observe(self, statement: str, elapsed_ms: float) -> None:
+        self.db_duration_ms += elapsed_ms
+        if self.slowest is None or elapsed_ms > self.slowest.duration_ms:
+            self.slowest = SlowStatement(sql=" ".join(statement.split()), duration_ms=elapsed_ms)
 
     def _accepts(self, session: Session) -> bool:
         return self.session_filter is None or self.session_filter is session
@@ -164,7 +200,7 @@ def _on_orm_execute(state: ORMExecuteState) -> None:
     path, uselist = _describe_path(state)
     frame = capture_app_frame() if any(rec.capture_stacks for rec in listeners) else None
     record = QueryRecord(
-        sql=" ".join(str(state.statement).split()),
+        statement=state.statement,
         is_lazy_load=state.lazy_loaded_from is not None,
         is_column_load=bool(state.is_column_load),
         entity=_describe_entity(state),
@@ -184,18 +220,43 @@ def _on_cursor_execute(
     context: Any,
     executemany: bool,
 ) -> None:
-    for recorder in _active.get():
+    active = _active.get()
+    if not active:
+        return
+    for recorder in active:
         recorder.cursor_count += 1
+    # Stack the start time on the connection: one connection runs one statement
+    # at a time, so this nests correctly without any correlation between layers.
+    conn.info.setdefault(_START_KEY, []).append(time.perf_counter())
+
+
+def _on_cursor_execute_done(
+    conn: Any,
+    cursor: Any,
+    statement: str,
+    parameters: Any,
+    context: Any,
+    executemany: bool,
+) -> None:
+    started = conn.info.get(_START_KEY)
+    if not started:
+        # The window opened after this statement began. Nothing to attribute.
+        return
+    elapsed_ms = (time.perf_counter() - started.pop()) * 1000
+    for recorder in _active.get():
+        recorder._observe(statement, elapsed_ms)
 
 
 def _install() -> None:
     event.listen(Session, "do_orm_execute", _on_orm_execute)
     event.listen(Engine, "before_cursor_execute", _on_cursor_execute)
+    event.listen(Engine, "after_cursor_execute", _on_cursor_execute_done)
 
 
 def _uninstall() -> None:
     event.remove(Session, "do_orm_execute", _on_orm_execute)
     event.remove(Engine, "before_cursor_execute", _on_cursor_execute)
+    event.remove(Engine, "after_cursor_execute", _on_cursor_execute_done)
 
 
 def start(recorder: Recorder) -> None:
@@ -224,6 +285,8 @@ def stop(recorder: Recorder) -> None:
 
 def listeners_installed() -> bool:
     """Whether queryspy currently has listeners registered. Used by the tests."""
-    return event.contains(Session, "do_orm_execute", _on_orm_execute) or event.contains(
-        Engine, "before_cursor_execute", _on_cursor_execute
+    return (
+        event.contains(Session, "do_orm_execute", _on_orm_execute)
+        or event.contains(Engine, "before_cursor_execute", _on_cursor_execute)
+        or event.contains(Engine, "after_cursor_execute", _on_cursor_execute_done)
     )

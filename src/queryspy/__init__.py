@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from ._detect import DEFAULT_THRESHOLD, Finding, detect
 from ._frames import AppFrame
-from ._recorder import QueryRecord, Recorder
+from ._recorder import QueryRecord, Recorder, SlowStatement
 from ._report import render_finding, render_findings
 from ._serialize import to_dict, to_json, to_sarif
 from .api import (
@@ -35,6 +35,7 @@ __all__ = [
     "QueryRecord",
     "QuerySpyError",
     "Recorder",
+    "SlowStatement",
     "assert_max_queries",
     "assert_num_queries",
     "detect",
@@ -47,4 +48,4 @@ __all__ = [
     "to_sarif",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

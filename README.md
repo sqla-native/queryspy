@@ -114,6 +114,17 @@ N+1 detected: 11 queries for Project.tasks (lazy load)
   fix: .options(selectinload(Project.tasks))
 ```
 
+Or open the panel — the thing FastAPI has never had a Debug Toolbar equivalent
+for:
+
+```python
+app.add_middleware(QuerySpyMiddleware, panel=True)  # then GET /__queryspy__
+```
+
+Recent requests, query counts, how much of the wall clock was actually spent in
+the database, and every finding with its source line and fix. One self-contained
+HTML page — no CDN, nothing fetched from anywhere. Off by default.
+
 Concurrent requests are isolated from each other: recording is scoped to a
 context variable, so interleaved requests never record each other's queries.
 Failed requests still report — the report is most useful precisely when the
@@ -146,6 +157,23 @@ the shorter path on a suite that has never been measured.
 
 [CI guide →](https://sqla-native.github.io/queryspy/ci/)
 
+## Adopting it on a codebase that already has N+1s
+
+Turning the gate on and watching twenty tests go red is how a linter gets
+switched back off. Record what is already there, then fail only on new ones:
+
+```bash
+pytest --queryspy-baseline=queryspy-baseline.json --queryspy-baseline-update
+pytest --queryspy-baseline=queryspy-baseline.json --queryspy-strict
+```
+
+A finding is identified by `(kind, label, file, function)` — not by line number,
+count, or which test found it — so the baseline survives unrelated edits instead
+of expiring on every reformat. Entries that stop occurring get reported so you
+can prune them.
+
+[Baselines →](https://sqla-native.github.io/queryspy/baseline/)
+
 ## API
 
 | | |
@@ -156,7 +184,10 @@ the shorter path on a suite that has never been measured.
 | `no_n_plus_one()` | No findings. |
 
 Query counts are **statements that reached the driver**, flushes included — the
-same thing Django's `assertNumQueries` counts.
+same thing Django's `assertNumQueries` counts. Timing is available too
+(`spy.db_duration_ms`, `spy.slowest`), and it is often the real story: twelve
+queries where one takes 31 of the 39 milliseconds is a slow query wearing an
+N+1's clothes.
 
 Every failure subclasses `AssertionError`, so pytest renders it like a failed
 `assert`. A failing test body always wins over a queryspy assertion; your own
@@ -169,7 +200,7 @@ exception is never masked.
 | `--queryspy-strict` | Fail any test that triggers an N+1 |
 | `queryspy_budget = 10` | Maximum statements per test |
 | `queryspy_fail_on = n_plus_one` | The ini equivalent of `--queryspy-strict` |
-| `queryspy_capture_stacks = false` | Skip source attribution (the main per-query cost) |
+| `queryspy_capture_stacks = false` | Skip source attribution |
 | `queryspy` fixture | A live recorder, for tests that want to inspect queries themselves |
 
 ## Why not nplusone?

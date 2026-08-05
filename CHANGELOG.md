@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-05
+
+### Added
+
+- **Debug panel** — the ASGI middleware can serve a self-contained HTML page at
+  `/__queryspy__` (`panel=True`): recent requests, query counts, database time,
+  and every finding with its source line and fix. No CDN, no external
+  stylesheet, nothing fetched from anywhere. Off by default, with bounded
+  history. It renders query *shapes* only — bind parameters are never captured
+  anywhere in queryspy, so values cannot appear.
+- **Query timing** — `Recorder.db_duration_ms` and `Recorder.slowest` measure
+  time actually spent in the driver. Surfaced in query-count failures, in the
+  middleware's log line and `RequestReport`, and in the panel. Reported per
+  *window*, never per finding: attributing milliseconds to a finding would mean
+  correlating the ORM and cursor layers, which the recorder refuses to do.
+  Deliberately **not** a gate — wall-clock assertions are flaky in CI.
+- **Baselines** — `--queryspy-baseline=PATH` tolerates known findings so the
+  gate fails only on new ones, and `--queryspy-baseline-update` records them.
+  Identity is `(kind, label, file, function)`, excluding line number, count and
+  which test found it, so a baseline survives unrelated edits. Entries that stop
+  occurring are reported rather than silently dropped.
+- `scripts/benchmark.py`, committed so the performance claims in the docs stay
+  checkable.
+
+### Changed
+
+- **Statement rendering is deferred**, cutting recording overhead from roughly
+  172% to ~40% of baseline — queries go from 2.7x slower to about 1.4x.
+  `str(state.statement)` is a full compile and used to run on every recorded
+  query; `QueryRecord.sql` is now a `cached_property`, so only unclaimed records
+  and the handful that become findings pay for it.
+
+### Fixed
+
+- **The docs named the wrong bottleneck.** The README, pytest guide and
+  constitution all claimed stack capture was the largest per-query cost.
+  Measured, it was around 9%; statement rendering was roughly half. Corrected,
+  and the benchmark is now committed so the claim can be re-checked.
+- Stale-baseline output said "1 baseline entry no longer occur".
+
 ## [0.2.0] - 2026-08-04
 
 ### Added
@@ -70,5 +110,6 @@ Initial release.
 - Async support with no extra setup — `AsyncSession` wraps a sync `Session`,
   and listeners are registered on the class.
 
+[0.3.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.3.0
 [0.2.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.2.0
 [0.1.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.1.0

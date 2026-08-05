@@ -169,3 +169,56 @@ def test_listeners_are_refcounted_across_threads() -> None:
 
     assert seen == [True, True]
     assert not listeners_installed()
+
+
+def test_queries_outside_any_window_are_ignored(session: Session) -> None:
+    """Listeners stay installed globally; recording is per-context.
+
+    A fresh `contextvars.Context` has no active recorders, so a query issued
+    inside one while another context holds a window open must land nowhere -
+    neither counted nor timed. This is the isolation an ASGI server depends on,
+    exercised without the thread-affinity constraints of a SQLite connection.
+    """
+    import contextvars
+
+    def outside() -> None:
+        session.scalars(select(User)).all()
+
+    with record() as spy:
+        assert listeners_installed()
+        contextvars.Context().run(outside)
+
+    assert spy.query_count == 0
+    assert spy.db_duration_ms == 0.0
+    assert spy.slowest is None
+
+
+def test_timing_is_recorded(session: Session) -> None:
+    with record() as spy:
+        session.scalars(select(User)).all()
+
+    assert spy.db_duration_ms > 0
+    assert spy.slowest is not None
+    assert spy.slowest.sql.startswith("SELECT")
+    assert spy.slowest.duration_ms > 0
+
+
+def test_slowest_tracks_the_largest(session: Session) -> None:
+    with record() as spy:
+        for _ in range(3):
+            session.scalars(select(User)).all()
+
+    assert spy.slowest is not None
+    assert spy.slowest.duration_ms <= spy.db_duration_ms
+
+
+def test_sql_is_computed_lazily_and_cached(session: Session) -> None:
+    """The perf fix: rendering a statement is ~half of all recording overhead."""
+    with record() as spy:
+        session.scalars(select(User)).all()
+
+    record_ = spy.orm_records[0]
+    assert "sql" not in record_.__dict__  # not rendered while recording
+    first = record_.sql
+    assert "sql" in record_.__dict__  # rendered on demand
+    assert record_.sql is first  # and cached

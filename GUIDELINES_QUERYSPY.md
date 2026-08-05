@@ -145,8 +145,15 @@ assertion — the body's own exception wins.
   its own PR.
 - The `fix:` line is not decoration. Every finding kind must suggest something a
   developer can paste. If a new kind cannot, it is not ready to ship.
-- Stack capture is the largest per-query cost. It stays opt-out
-  (`capture_stacks=False`, `queryspy_capture_stacks = false`).
+- **Know where the cost actually is, by measuring it.** `scripts/benchmark.py`
+  is committed for exactly this. Until 0.3 these guidelines asserted that stack
+  capture was the largest per-query cost; measurement showed otherwise —
+  rendering the statement was, at roughly half of all recording overhead, and
+  recording made queries 2.7x slower. Rendering is now deferred until a record
+  is reported (`QueryRecord.sql` is a `cached_property`), which took overhead to
+  ~40% of baseline. Stack capture is about a quarter of what remains and stays
+  opt-out (`capture_stacks=False`, `queryspy_capture_stacks = false`). Re-run
+  the benchmark before making a performance claim in the docs.
 - Keep the pytest wrapper inert when no policy asks for anything, so a suite
   that uses neither the marker nor the flag pays nothing.
 
