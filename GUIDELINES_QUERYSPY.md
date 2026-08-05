@@ -50,11 +50,20 @@ why it rotted, and it is the first rule below.
   the fragility that killed `nplusone`.
 
 - **Listeners are registered on the `Session` and `Engine` classes**, not on
-  instances and not via `contextvars`. `AsyncSession` wraps a sync `Session`,
-  so class-level registration covers async for free, and it sidesteps the open
-  question of whether context variables propagate across SQLAlchemy's greenlet
-  bridge. Every query during a test belongs to that test, so a per-window
-  recorder stays correct even under `asyncio.gather`.
+  instances. `AsyncSession` wraps a sync `Session`, so class-level registration
+  covers async for free and users pass nothing.
+
+- **Which recorders receive a record is scoped to a context variable, never a
+  module global.** A global is correct for tests, where one window is open at a
+  time, and wrong for a concurrent server: interleaved requests would each
+  record every other request's queries. `asyncio` copies the context at task
+  creation, so a window still covers the tasks it spawns, while a window opened
+  inside one request stays invisible to every other request.
+
+  Measured: context variables **do** propagate across SQLAlchemy's greenlet
+  bridge, so an async lazy load lands in the window that caused it. Listener
+  *registration* is refcounted separately, under a lock, because registration is
+  genuinely global while the recorder set is not.
 
 - **Listeners must be fully removable.** `stop()` removes them once the last
   window closes; `tests/test_lifecycle.py` asserts `event.contains` returns
@@ -91,7 +100,29 @@ INSERTs preceding a SELECT.
 When in doubt, do not report. A missed N+1 costs the user some latency; a false
 alarm costs the library its credibility.
 
-### 3. Public API
+### 3. Declined by measurement, not by omission
+
+**Unused eager-load detection is a non-goal.** Detecting `selectinload` on a
+relationship that is never read would be genuinely useful, and it cannot be done
+through public API. Measured on SQLAlchemy 2.0.51:
+
+- `AttributeEvents` exposes only mutation hooks — `append`, `remove`, `set`,
+  `bulk_replace`, `init_collection` — and **no** read, get or access event
+- `InstanceState.unloaded` is empty after an eager load, by definition
+- reading an attribute does not alter `state.dict`
+
+The only remaining routes are patching `InstrumentedAttribute.__get__`, which is
+exactly what killed the predecessor, or taking over the user's entire model
+instrumentation through `sqlalchemy.ext.instrumentation` — more invasive than
+the patch it would replace, and it changes the semantics of the user's own
+application. Declined rather than smuggled in. If SQLAlchemy ever grows a read
+event, this becomes a small feature; re-run the measurement before assuming it
+has not.
+
+**Django ORM support is a non-goal.** This org is `sqla-native`, and Django is
+the one ecosystem that already has working tools.
+
+### 4. Public API
 
 - `record()` — the recording window; everything else is built on it.
 - `assert_num_queries(n)` / `assert_max_queries(n)` — count **statements that
@@ -107,7 +138,7 @@ All assertion failures subclass `AssertionError` so pytest renders them like a
 failed `assert`. A failing test body must never be masked by a queryspy
 assertion — the body's own exception wins.
 
-### 4. Implementation rules
+### 5. Implementation rules
 
 - **Exactly one runtime dependency: `sqlalchemy>=2.0`.** Adding a second
   requires an explicit amendment to this document, argued on its own merits, in
@@ -119,7 +150,7 @@ assertion — the body's own exception wins.
 - Keep the pytest wrapper inert when no policy asks for anything, so a suite
   that uses neither the marker nor the flag pays nothing.
 
-### 5. Non-negotiable style
+### 6. Non-negotiable style
 
 - **100% test coverage** (branch included) on `src/queryspy`, enforced by
   `coverage` with `fail_under = 100`.
@@ -132,14 +163,14 @@ assertion — the body's own exception wins.
   guard exists only for an environment no test can produce, restructure the code
   to be total instead (see `_library_roots` using a set intersection).
 
-### 6. Strictness scope
+### 7. Strictness scope
 
 The non-negotiables above — 100% coverage, complexity ≤ 15, the single runtime
 dependency — govern the **core package** (`src/queryspy`). Non-core code
-(`examples/`, `scripts/`, docs, dev tooling) runs lighter rules: dependency
+(`examples/`, `scripts/`, `docs/`, dev tooling) runs lighter rules: dependency
 updates there may merge on green CI without ceremony.
 
-### 7. Security and supply chain (MANDATORY)
+### 8. Security and supply chain (MANDATORY)
 
 - Every PR includes a supply-chain pass.
 - **Audit scope:** the release gate audits the *published* surface. Build the
@@ -149,7 +180,7 @@ updates there may merge on green CI without ceremony.
   Dependabot's job and do not block a release.
 - No secrets in code, tests, examples, logs, or docs.
 
-### 8. Releasing
+### 9. Releasing
 
 Bump `version` in `pyproject.toml` **and** `__version__` in
 `src/queryspy/__init__.py` to the same value, then tag `vX.Y.Z` and push the

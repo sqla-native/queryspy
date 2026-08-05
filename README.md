@@ -22,6 +22,8 @@ pip install queryspy
 
 One runtime dependency: SQLAlchemy. The pytest plugin registers itself.
 
+**[Full documentation →](https://sqla-native.github.io/queryspy/)**
+
 ## Quick start
 
 Run your existing suite in strict mode and see what lights up:
@@ -93,6 +95,57 @@ no application frames at all, so `queryspy` walks up the greenlet chain to find
 the caller. Without that, exactly the case you most want to diagnose would
 report with no source line.
 
+## In your running app
+
+A per-request query panel for FastAPI, Starlette or Litestar. Pure ASGI3 — no
+framework dependency, no new packages.
+
+```python
+from queryspy.asgi import QuerySpyMiddleware
+
+app.add_middleware(QuerySpyMiddleware, budget=10)
+```
+
+```
+WARNING queryspy: GET /projects - 12 queries in 41.3ms
+
+N+1 detected: 11 queries for Project.tasks (lazy load)
+  triggered from app/api/projects.py:31 in list_projects()
+  fix: .options(selectinload(Project.tasks))
+```
+
+Concurrent requests are isolated from each other: recording is scoped to a
+context variable, so interleaved requests never record each other's queries.
+Failed requests still report — the report is most useful precisely when the
+request blew up.
+
+[ASGI guide →](https://sqla-native.github.io/queryspy/asgi/)
+
+## In CI
+
+```bash
+pytest --queryspy-report=queryspy.sarif
+```
+
+SARIF uploads to GitHub code scanning, which puts each N+1 as an annotation on
+the line of the pull request that causes it. There is an Action for the whole
+sequence:
+
+```yaml
+permissions:
+  security-events: write
+
+- uses: sqla-native/queryspy@v0
+  with:
+    args: tests/
+```
+
+Requesting a report **collects without enforcing** — outcomes are unchanged
+unless you also gate. Adopting the report first and the gate second is usually
+the shorter path on a suite that has never been measured.
+
+[CI guide →](https://sqla-native.github.io/queryspy/ci/)
+
 ## API
 
 | | |
@@ -149,6 +202,17 @@ detection suite.
 Not a profiler, not a query optimiser, not a production APM. It does not change
 loader strategies or rewrite queries. It tells you where the problem is and what
 to paste; the fix is yours.
+
+It also does **not** detect eager loads that are never used, and that is a
+deliberate omission rather than a gap. Measured: SQLAlchemy's `AttributeEvents`
+exposes only mutation hooks with no read event, `InstanceState.unloaded` is
+empty after an eager load, and reading an attribute does not alter `state.dict`.
+The only routes left are patching `InstrumentedAttribute.__get__` — precisely
+what killed `nplusone` — or taking over your entire model instrumentation. Not
+worth the thing that makes this library trustworthy.
+
+Django is out of scope too. This is `sqla-native`, and Django is the one
+ecosystem that already has working tools.
 
 ## Requirements
 

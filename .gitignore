@@ -19,3 +19,4 @@ ci-data/
 .devcontainer/
 .plan/
 .complexipy_cache/
+site/

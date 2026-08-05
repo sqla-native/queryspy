@@ -43,6 +43,9 @@ class Finding:
     frame: AppFrame | None
     entity: str | None = None
     uselist: bool | None = None
+    origin: str | None = None
+    """Where this finding came from, when something upstream knows - the pytest
+    plugin fills in the test node id. Detection never sets it."""
 
 
 def _build(kind: str, label: str, group: list[QueryRecord]) -> Finding:

@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload
 from sqlalchemy.pool import StaticPool
 
+from queryspy.asgi import QuerySpyMiddleware, RequestReport
+
 
 class Base(AsyncAttrs, DeclarativeBase):
     pass
@@ -51,7 +53,13 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 async def seed() -> None:
+    """Reset the database to a known three-project state.
+
+    Idempotent on purpose: the tests call it per-test, and an additive seed
+    would make every query count depend on how many tests ran before it.
+    """
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     async with Sessionmaker() as session:
         session.add_all(
@@ -70,6 +78,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Every request now logs its query count, and any request that trips a detector
+# logs the full report. `on_report` is here so the tests can assert on what the
+# middleware saw; in a real app you would leave it out and read the log, or
+# point it at your metrics system.
+REPORTS: list[RequestReport] = []
+app.add_middleware(QuerySpyMiddleware, budget=5, on_report=REPORTS.append)
 
 
 @app.get("/projects")

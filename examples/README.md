@@ -1,24 +1,51 @@
-# Example: FastAPI + async SQLAlchemy
+# Examples
 
-A minimal service with one deliberate N+1, and the test that catches it.
+A FastAPI + async SQLAlchemy service with one deliberate N+1, and tests that
+assert every queryspy feature against it. These run in CI — they are validation,
+not decoration.
 
 ```bash
 uv pip install -r requirements.txt
-pytest --queryspy-strict
+pytest examples -q
 ```
 
-`test_endpoints.py::test_list_projects_has_no_n_plus_one` fails and names the
-exact line in `app.py` responsible:
+## What is in here
+
+`fastapi_app/app.py` exposes the same data two ways:
+
+| Endpoint | Queries | |
+| --- | --- | --- |
+| `GET /projects` | 4 | The bug — one query per project |
+| `GET /projects-fixed` | 2 | `selectinload`, flat regardless of project count |
+
+The app mounts `QuerySpyMiddleware`, so both endpoints report themselves.
+
+## What the tests prove
+
+| File | Validates |
+| --- | --- |
+| `test_endpoints.py` | The N+1 is detected; the fixed endpoint holds a 2-query budget |
+| `test_middleware.py` | Middleware counts, response headers, source attribution, **and concurrent-request isolation** |
+| `test_reporting.py` | SARIF points code scanning at the offending line; JSON carries the fix |
+
+`test_endpoints.py::test_list_projects_has_no_n_plus_one` is an
+`xfail(strict=True)`: it is *expected* to fail, because the endpoint really does
+have the bug. Apply the fix queryspy prints and the test flips to passing — and
+the strict xfail then fails the suite, telling you to update it. That is the
+whole demo in one test.
+
+## Seeing it for yourself
+
+```bash
+pytest examples --runxfail -q
+```
 
 ```
 N+1 detected: 3 queries for Project.tasks (lazy load)
-  triggered from examples/fastapi_app/app.py:NN in list_projects()
-  SELECT task.id AS task_id, ...
+  triggered from examples/fastapi_app/app.py:91 in list_projects()
+  SELECT task.id AS task_id, task.title AS task_title ...
   fix: .options(selectinload(Project.tasks))
 ```
 
-Apply that fix to `list_projects` and the test passes. The sibling endpoint
-`list_projects_fixed` shows the corrected version.
-
-This directory is illustrative and sits outside the core package's strictness
-scope (see GUIDELINES_QUERYSPY.md section 6).
+This directory sits outside the core package's strictness scope — see
+`GUIDELINES_QUERYSPY.md` section 6.

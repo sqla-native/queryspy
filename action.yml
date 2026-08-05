@@ -1,0 +1,112 @@
+name: queryspy
+description: Run a pytest suite with queryspy and surface N+1 findings as code-scanning annotations.
+author: sqla-native
+
+branding:
+  icon: search
+  color: green
+
+# Deliberately does NOT install Python or your dependencies. Every project
+# installs differently, and guessing would be worse than composing: set up your
+# environment however you already do, then add this step.
+#
+#   permissions:
+#     security-events: write   # required when upload is true
+#
+#   - uses: actions/setup-python@v5
+#   - run: pip install -e .[test] queryspy
+#   - uses: sqla-native/queryspy@v0
+#     with:
+#       args: tests/
+
+inputs:
+  args:
+    description: Extra arguments passed through to pytest (test paths, -k, markers).
+    required: false
+    default: ""
+  report:
+    description: Where to write the SARIF report.
+    required: false
+    default: queryspy.sarif
+  strict:
+    description: Fail the job when any N+1 is detected (adds --queryspy-strict).
+    required: false
+    default: "false"
+  upload:
+    description: Upload the SARIF to GitHub code scanning. Needs security-events: write.
+    required: false
+    default: "true"
+  working-directory:
+    description: Directory to run pytest in.
+    required: false
+    default: "."
+
+outputs:
+  findings:
+    description: Number of findings in the report.
+    value: ${{ steps.summarize.outputs.findings }}
+  report:
+    description: Path to the SARIF report that was written.
+    value: ${{ steps.summarize.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run pytest with queryspy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        STRICT=""
+        if [ "${{ inputs.strict }}" = "true" ]; then
+          STRICT="--queryspy-strict"
+        fi
+        # Never let a failing suite skip the report: the findings are most
+        # useful precisely when the run went red. The exit code is preserved
+        # and re-raised by the final step.
+        set +e
+        python -m pytest --queryspy-report="${{ inputs.report }}" $STRICT ${{ inputs.args }}
+        echo "PYTEST_EXIT=$?" >> "$GITHUB_ENV"
+        set -e
+
+    - name: Summarize findings
+      id: summarize
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        REPORT="${{ inputs.report }}"
+        echo "report=$REPORT" >> "$GITHUB_OUTPUT"
+        if [ ! -f "$REPORT" ]; then
+          echo "::warning::queryspy report not found at $REPORT"
+          echo "findings=0" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        COUNT="$(python -c "
+        import json, sys
+        doc = json.load(open(sys.argv[1]))
+        print(sum(len(run.get('results', [])) for run in doc.get('runs', [])))
+        " "$REPORT")"
+        echo "findings=$COUNT" >> "$GITHUB_OUTPUT"
+        {
+          echo "### queryspy"
+          echo
+          if [ "$COUNT" = "0" ]; then
+            echo "No N+1 access patterns detected."
+          else
+            echo "**$COUNT finding(s)** — see the Code scanning tab for annotations."
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload SARIF
+      if: ${{ inputs.upload == 'true' && hashFiles(format('{0}/{1}', inputs.working-directory, inputs.report)) != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.working-directory }}/${{ inputs.report }}
+        category: queryspy
+
+    - name: Propagate the pytest exit code
+      shell: bash
+      run: |
+        if [ "${PYTEST_EXIT:-0}" != "0" ]; then
+          echo "::error::pytest exited with ${PYTEST_EXIT}"
+          exit "${PYTEST_EXIT}"
+        fi
