@@ -189,3 +189,63 @@ def test_a_failing_test_body_is_not_masked(project: pytest.Pytester) -> None:
 def test_marker_is_registered(project: pytest.Pytester) -> None:
     result = run(project, "--markers")
     result.stdout.fnmatch_lines(["*queryspy(max_queries=None*"])
+
+
+def test_report_written_as_json(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-report=out/findings.json")
+
+    import json
+
+    document = json.loads((project.path / "out" / "findings.json").read_text())
+    assert document["tool"] == "queryspy"
+    assert [f["kind"] for f in document["findings"]] == ["lazy_load"]
+    assert document["findings"][0]["origin"].endswith("::test_offender")
+    assert document["findings"][0]["location"]["file"].endswith(".py")
+
+
+def test_report_format_inferred_from_the_sarif_extension(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-report=findings.sarif")
+
+    import json
+
+    document = json.loads((project.path / "findings.sarif").read_text())
+    assert document["version"] == "2.1.0"
+    assert document["runs"][0]["results"][0]["ruleId"] == "lazy_load"
+
+
+def test_report_format_can_be_forced(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-report=findings.txt", "--queryspy-report-format=sarif")
+
+    import json
+
+    assert json.loads((project.path / "findings.txt").read_text())["version"] == "2.1.0"
+
+
+def test_requesting_a_report_does_not_fail_the_run(project: pytest.Pytester) -> None:
+    """Collecting is not enforcing - a report alone must leave outcomes alone."""
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-report=findings.json").assert_outcomes(passed=1)
+
+
+def test_report_is_written_even_when_tests_fail(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-report=findings.json", "--queryspy-strict").assert_outcomes(failed=1)
+    assert (project.path / "findings.json").exists()
+
+
+def test_clean_run_writes_an_empty_report(project: pytest.Pytester) -> None:
+    write(project, "def test_clean(session):\n    eager(session)\n")
+    run(project, "--queryspy-report=findings.json")
+
+    import json
+
+    assert json.loads((project.path / "findings.json").read_text())["findings"] == []
+
+
+def test_no_report_written_without_the_flag(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project)
+    assert not (project.path / "findings.json").exists()

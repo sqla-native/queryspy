@@ -15,6 +15,7 @@ from ._detect import DEFAULT_THRESHOLD, Finding, detect
 from ._frames import AppFrame
 from ._recorder import QueryRecord, Recorder
 from ._report import render_finding, render_findings
+from ._serialize import to_dict, to_json, to_sarif
 from .api import (
     NPlusOneError,
     QueryCountError,
@@ -41,6 +42,9 @@ __all__ = [
     "record",
     "render_finding",
     "render_findings",
+    "to_dict",
+    "to_json",
+    "to_sarif",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

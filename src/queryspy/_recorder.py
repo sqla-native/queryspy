@@ -19,6 +19,8 @@ propagate across SQLAlchemy's greenlet bridge.
 
 from __future__ import annotations
 
+import threading
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -103,7 +105,25 @@ def _resolve_session(session: Session | AsyncSession | None) -> Session | None:
     return session  # type: ignore[return-value]
 
 
-_active: list[Recorder] = []
+_active: ContextVar[tuple[Recorder, ...]] = ContextVar("queryspy_active", default=())
+"""Recorders collecting in the current context.
+
+A context variable rather than a module global, because a module global is
+correct for tests (one window at a time) and *wrong* for a concurrent server:
+interleaved requests would each record every other request's queries.
+
+`asyncio` copies the context when a task is created, so a window opened before
+`asyncio.gather` still sees the queries its tasks issue, while a window opened
+inside one request stays invisible to every other request. Measured: context
+variables do propagate across SQLAlchemy's greenlet bridge, so this holds for
+async lazy loads too, which run in a spawned greenlet.
+"""
+
+# Listener *registration* is genuinely global, so it is refcounted separately
+# from the per-context recorder set. The lock covers threaded use, where two
+# threads may open their first window at the same moment.
+_registration_lock = threading.Lock()
+_registration_depth = 0
 
 
 def _describe_entity(state: ORMExecuteState) -> str | None:
@@ -134,9 +154,10 @@ def _describe_path(state: ORMExecuteState) -> tuple[str | None, bool | None]:
 
 
 def _on_orm_execute(state: ORMExecuteState) -> None:
-    if not _active or not state.is_select:
+    active = _active.get()
+    if not active or not state.is_select:
         return
-    listeners = [rec for rec in _active if rec._accepts(state.session)]
+    listeners = [rec for rec in active if rec._accepts(state.session)]
     if not listeners:
         return
 
@@ -163,7 +184,7 @@ def _on_cursor_execute(
     context: Any,
     executemany: bool,
 ) -> None:
-    for recorder in _active:
+    for recorder in _active.get():
         recorder.cursor_count += 1
 
 
@@ -179,9 +200,12 @@ def _uninstall() -> None:
 
 def start(recorder: Recorder) -> None:
     """Begin a recording window, installing listeners if this is the first."""
-    if not _active:
-        _install()
-    _active.append(recorder)
+    global _registration_depth
+    with _registration_lock:
+        if _registration_depth == 0:
+            _install()
+        _registration_depth += 1
+    _active.set((*_active.get(), recorder))
 
 
 def stop(recorder: Recorder) -> None:
@@ -190,9 +214,12 @@ def stop(recorder: Recorder) -> None:
     Constitution rule 4: listeners must be fully removable. The test suite
     asserts ``event.contains`` is False after teardown.
     """
-    _active.remove(recorder)
-    if not _active:
-        _uninstall()
+    global _registration_depth
+    _active.set(tuple(other for other in _active.get() if other is not recorder))
+    with _registration_lock:
+        _registration_depth -= 1
+        if _registration_depth == 0:
+            _uninstall()
 
 
 def listeners_installed() -> bool:

@@ -156,3 +156,32 @@ jobs:
       # in. Dev-tooling advisories are Dependabot's job and do not block a release.
       - name: Audit the production surface
         run: python scripts/audit_production_surface.py
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv pip install --system -e . --group dev
+      # A broken link fails the PR rather than the deploy.
+      - run: mkdocs build --strict
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    # The examples are validation, not decoration: they assert the middleware's
+    # counts, its concurrency isolation, and the SARIF shape against the real
+    # app. Running them here is what stops them rotting.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv pip install --system -e . --group dev
+      - run: uv pip install --system -r examples/requirements.txt
+      - run: pytest examples -q

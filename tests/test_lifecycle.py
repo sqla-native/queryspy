@@ -110,3 +110,62 @@ def test_statements_without_a_mapped_entity_are_recorded_without_one(session: Se
 
     assert len(spy.orm_records) == 1
     assert spy.orm_records[0].entity is None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_windows_do_not_see_each_others_queries(async_engine: object) -> None:
+    """The isolation a concurrent server needs.
+
+    A module-global recorder list would give each of these every other request's
+    queries. Context variables scope a window to the task that opened it - and
+    they propagate across SQLAlchemy's greenlet bridge, so async lazy loads land
+    in the right window too.
+    """
+
+    async def request(n: int) -> tuple[int, list[str]]:
+        async with AsyncSession(async_engine) as session:  # type: ignore[arg-type]
+            with record() as spy:
+                users = (await session.scalars(select(User).limit(n))).all()
+                for user in users:
+                    await user.awaitable_attrs.addresses
+            return spy.query_count, [f.kind for f in spy.findings()]
+
+    light, heavy = await asyncio.gather(request(1), request(3))
+
+    assert light == (2, [])  # one parent query, one lazy load: no N+1
+    assert heavy == (4, ["lazy_load"])  # one parent query, three lazy loads
+
+
+@pytest.mark.asyncio
+async def test_a_window_still_covers_tasks_it_spawns(async_session: AsyncSession) -> None:
+    """Context is copied at task creation, so gather() inside a window is covered."""
+
+    async def fetch() -> None:
+        await async_session.scalars(select(User))
+
+    with record() as spy:
+        await asyncio.gather(fetch(), fetch())
+
+    assert spy.query_count == 2
+
+
+def test_listeners_are_refcounted_across_threads() -> None:
+    """Registration is global even though the recorder set is per-context."""
+    import threading as _threading
+
+    barrier = _threading.Barrier(2)
+    seen: list[bool] = []
+
+    def worker() -> None:
+        with record():
+            barrier.wait()
+            seen.append(listeners_installed())
+
+    threads = [_threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert seen == [True, True]
+    assert not listeners_installed()

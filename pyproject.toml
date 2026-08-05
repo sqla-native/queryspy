@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "queryspy"
-version = "0.1.0"
+version = "0.2.0"
 description = "N+1 and query-budget detection for SQLAlchemy 2.0, sync and async"
 readme = "README.md"
 authors = [{ name = "Rodrigo Nogueira", email = "rodrigo.b.nogueira@gmail.com" }]
@@ -61,6 +61,7 @@ dev = [
     "complexipy>=6.0",
     "mypy>=1.9",
     "ruff>=0.4",
+    "mkdocs-material>=9.5",
 ]
 
 [tool.hatch.build.targets.wheel]
