@@ -39,6 +39,7 @@ nav:
   - What it catches: detectors.md
   - Guides:
       - pytest: pytest.md
+      - Baselines: baseline.md
       - ASGI middleware: asgi.md
       - CI and code scanning: ci.md
   - Reference:

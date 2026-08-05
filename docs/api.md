@@ -24,6 +24,8 @@ Returned by every context manager.
 | Member | Type | Meaning |
 | --- | --- | --- |
 | `query_count` | `int` | Statements that reached the driver, flushes included |
+| `db_duration_ms` | `float` | Time actually spent in the driver |
+| `slowest` | `SlowStatement \| None` | The single slowest statement, with its duration |
 | `orm_records` | `list[QueryRecord]` | ORM-level executions |
 | `findings(threshold=2)` | `list[Finding]` | Problems, worst first |
 
@@ -46,7 +48,7 @@ One ORM-level statement execution.
 
 | Field | Meaning |
 | --- | --- |
-| `sql` | Statement template — bind parameters stay as placeholders |
+| `sql` | Statement template — bind parameters stay as placeholders. Rendered lazily and cached, because rendering is expensive and most records are never reported |
 | `is_lazy_load` | `lazy_loaded_from` was set. **Not** `is_relationship_load` |
 | `is_column_load` | Per-instance column round trip |
 | `entity`, `path`, `uselist`, `frame` | Attribution |

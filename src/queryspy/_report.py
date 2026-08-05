@@ -6,10 +6,15 @@ Output is tuned for a pytest failure message: the headline first, then where in
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ._detect import Finding
 from ._hints import hint_for
 
-__all__ = ["render_finding", "render_findings"]
+if TYPE_CHECKING:
+    from ._recorder import SlowStatement
+
+__all__ = ["render_finding", "render_findings", "render_timing"]
 
 _MAX_SQL = 120
 
@@ -39,3 +44,21 @@ def render_finding(finding: Finding) -> str:
 def render_findings(findings: list[Finding]) -> str:
     """Render every finding, worst first."""
     return "\n\n".join(render_finding(finding) for finding in findings)
+
+
+def render_timing(db_duration_ms: float, slowest: SlowStatement | None) -> str:
+    """One line of timing, naming the slowest statement when it dominates.
+
+    Timing is reported per window, never per finding: attributing milliseconds
+    to a finding would mean correlating the ORM and cursor layers, which is the
+    one thing the recorder refuses to do.
+    """
+    line = f"{db_duration_ms:.1f}ms in the database"
+    if slowest is None:
+        return line
+    share = slowest.duration_ms / db_duration_ms if db_duration_ms else 0.0
+    if share < 0.5:
+        return line
+    return (
+        f"{line}, {slowest.duration_ms:.1f}ms of it in one statement:\n  {_truncate(slowest.sql)}"
+    )

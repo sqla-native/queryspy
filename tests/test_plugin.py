@@ -249,3 +249,90 @@ def test_no_report_written_without_the_flag(project: pytest.Pytester) -> None:
     write(project, "def test_offender(session):\n    n_plus_one(session)\n")
     run(project)
     assert not (project.path / "findings.json").exists()
+
+
+def test_baseline_update_records_and_does_not_fail(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    result = run(
+        project, "--queryspy-baseline=qs.json", "--queryspy-baseline-update", "--queryspy-strict"
+    )
+
+    result.assert_outcomes(passed=1)  # recording, not enforcing
+    result.stdout.fnmatch_lines(["*wrote 1 baseline entry to qs.json*"])
+
+    import json
+
+    document = json.loads((project.path / "qs.json").read_text())
+    assert document["entries"][0]["kind"] == "lazy_load"
+    assert document["entries"][0]["label"] == "User.addresses"
+    # Deliberately absent: line number and count.
+    assert set(document["entries"][0]) == {"kind", "label", "file", "function"}
+
+
+def test_baseline_suppresses_the_known_finding(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-baseline=qs.json", "--queryspy-baseline-update")
+
+    # Same offender, now baselined: the gate passes.
+    run(project, "--queryspy-baseline=qs.json", "--queryspy-strict").assert_outcomes(passed=1)
+
+
+def test_baseline_still_fails_on_a_new_finding(project: pytest.Pytester) -> None:
+    write(project, "def test_known(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-baseline=qs.json", "--queryspy-baseline-update")
+
+    # A second offender at a genuinely different code location. Note that
+    # simply calling n_plus_one() from another test would NOT count as new:
+    # findings are attributed to the ORM call site, so the baseline tracks code
+    # locations rather than test occurrences.
+    write(
+        project,
+        "from sqlalchemy import select\n"
+        "from conftest import User\n\n"
+        "def test_known(session):\n    n_plus_one(session)\n\n\n"
+        "def test_new(session):\n"
+        "    for user in session.scalars(select(User)).all():\n"
+        "        list(user.addresses)\n",
+    )
+    result = run(project, "--queryspy-baseline=qs.json", "--queryspy-strict")
+    result.assert_outcomes(passed=1, failed=1)
+    result.stdout.fnmatch_lines(["*N+1 detected*"])
+
+
+def test_baseline_survives_a_line_shift(project: pytest.Pytester) -> None:
+    """The point of excluding line numbers from the identity."""
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-baseline=qs.json", "--queryspy-baseline-update")
+
+    write(
+        project,
+        "# a new comment\n" * 40 + "def test_offender(session):\n    n_plus_one(session)\n",
+    )
+    run(project, "--queryspy-baseline=qs.json", "--queryspy-strict").assert_outcomes(passed=1)
+
+
+def test_stale_baseline_entries_are_reported(project: pytest.Pytester) -> None:
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-baseline=qs.json", "--queryspy-baseline-update")
+
+    # Fixed it. The baseline entry now protects nothing.
+    write(project, "def test_offender(session):\n    eager(session)\n")
+    result = run(project, "--queryspy-baseline=qs.json", "--queryspy-strict")
+
+    result.assert_outcomes(passed=1)
+    result.stdout.fnmatch_lines(["*1 baseline entry no longer occurs*"])
+    result.stdout.fnmatch_lines(["*--queryspy-baseline-update to prune them*"])
+
+
+def test_missing_baseline_file_is_not_an_error(project: pytest.Pytester) -> None:
+    write(project, "def test_clean(session):\n    eager(session)\n")
+    run(project, "--queryspy-baseline=absent.json", "--queryspy-strict").assert_outcomes(passed=1)
+
+
+def test_baseline_does_not_suppress_budget_failures(project: pytest.Pytester) -> None:
+    """A baseline is about findings, not about how many queries you may run."""
+    write(project, "def test_offender(session):\n    n_plus_one(session)\n")
+    run(project, "--queryspy-baseline=qs.json", "--queryspy-baseline-update")
+
+    project.makeini("[pytest]\nqueryspy_budget = 2\n")
+    run(project, "--queryspy-baseline=qs.json").assert_outcomes(failed=1)

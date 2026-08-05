@@ -19,12 +19,16 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
+from . import __version__
 from ._detect import DEFAULT_THRESHOLD, Finding
-from ._report import render_findings
+from ._panel import render_panel
+from ._recorder import SlowStatement
+from ._report import render_findings, render_timing
 from .api import record
 
 __all__ = ["QuerySpyMiddleware", "RequestReport"]
@@ -47,6 +51,10 @@ class RequestReport:
     query_count: int
     findings: list[Finding]
     duration_ms: float
+    """Wall-clock time for the whole request."""
+    db_duration_ms: float = 0.0
+    """Time actually spent in the database driver."""
+    slowest: SlowStatement | None = None
 
     @property
     def clean(self) -> bool:
@@ -55,7 +63,8 @@ class RequestReport:
     def render(self) -> str:
         headline = (
             f"{self.method} {self.path} - {self.query_count} "
-            f"quer{'y' if self.query_count == 1 else 'ies'} in {self.duration_ms:.1f}ms"
+            f"quer{'y' if self.query_count == 1 else 'ies'} in {self.duration_ms:.1f}ms "
+            f"({render_timing(self.db_duration_ms, self.slowest)})"
         )
         if not self.findings:
             return headline
@@ -84,6 +93,9 @@ class QuerySpyMiddleware:
         add_headers: bool = True,
         logger: logging.Logger | None = None,
         on_report: Callable[[RequestReport], None] | None = None,
+        panel: bool = False,
+        panel_path: str = "/__queryspy__",
+        history: int = 50,
     ) -> None:
         self.app = app
         self.threshold = threshold
@@ -92,10 +104,19 @@ class QuerySpyMiddleware:
         self.add_headers = add_headers
         self.logger = logger or _LOGGER
         self.on_report = on_report
+        self.panel = panel
+        self.panel_path = panel_path
+        # Bounded on purpose: an unbounded buffer in a long-running process is a
+        # leak, and old requests stop being interesting quickly.
+        self.history: deque[RequestReport] = deque(maxlen=history)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
+            return
+
+        if self.panel and scope.get("path") == self.panel_path:
+            await self._serve_panel(send)
             return
 
         started = time.perf_counter()
@@ -116,7 +137,24 @@ class QuerySpyMiddleware:
             query_count=recorder.query_count,
             findings=recorder.findings(threshold=self.threshold),
             duration_ms=(time.perf_counter() - started) * 1000,
+            db_duration_ms=recorder.db_duration_ms,
+            slowest=recorder.slowest,
         )
+
+    async def _serve_panel(self, send: Send) -> None:
+        payload = render_panel(list(self.history), version=__version__).encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"text/html; charset=utf-8"),
+                    (b"content-length", str(len(payload)).encode()),
+                    (b"cache-control", b"no-store"),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": payload})
 
     def _wrap_send(self, send: Send, recorder: Any) -> Send:
         """Attach counters to the response.
@@ -140,6 +178,8 @@ class QuerySpyMiddleware:
         return wrapper
 
     def _emit(self, report: RequestReport) -> None:
+        if self.panel:
+            self.history.append(report)
         if self.on_report is not None:
             self.on_report(report)
 

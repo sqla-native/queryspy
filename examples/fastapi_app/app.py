@@ -84,7 +84,14 @@ app = FastAPI(lifespan=lifespan)
 # middleware saw; in a real app you would leave it out and read the log, or
 # point it at your metrics system.
 REPORTS: list[RequestReport] = []
-app.add_middleware(QuerySpyMiddleware, budget=5, on_report=REPORTS.append)
+app.add_middleware(
+    QuerySpyMiddleware,
+    budget=5,
+    on_report=REPORTS.append,
+    # The panel is off by default because it renders SQL. Enabled here so
+    # you can open http://127.0.0.1:8000/__queryspy__ and look at it.
+    panel=True,
+)
 
 
 @app.get("/projects")

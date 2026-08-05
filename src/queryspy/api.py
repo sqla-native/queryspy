@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from ._detect import DEFAULT_THRESHOLD
 from ._recorder import Recorder, _resolve_session, start, stop
-from ._report import render_findings
+from ._report import render_findings, render_timing
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -119,7 +119,9 @@ def _y(count: int) -> str:
 
 
 def _detail(recorder: Recorder) -> str:
+    """Everything useful we already know, appended to a count failure."""
+    parts = [render_timing(recorder.db_duration_ms, recorder.slowest)]
     findings = recorder.findings()
-    if not findings:
-        return ""
-    return "\n\n" + render_findings(findings)
+    if findings:
+        parts.append(render_findings(findings))
+    return "\n\n" + "\n\n".join(parts)

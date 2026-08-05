@@ -182,9 +182,83 @@ async def test_concurrent_requests_are_isolated(async_engine: object) -> None:
 
 
 def test_request_report_rendering() -> None:
-    clean = RequestReport(method="GET", path="/x", query_count=1, findings=[], duration_ms=12.34)
-    assert clean.render() == "GET /x - 1 query in 12.3ms"
+    clean = RequestReport(
+        method="GET", path="/x", query_count=1, findings=[], duration_ms=12.34, db_duration_ms=4.0
+    )
+    assert clean.render() == "GET /x - 1 query in 12.3ms (4.0ms in the database)"
     assert clean.clean
 
     plural = RequestReport(method="GET", path="/x", query_count=2, findings=[], duration_ms=1.0)
     assert "2 queries" in plural.render()
+
+
+@pytest.mark.asyncio
+async def test_timing_is_measured(async_engine: object) -> None:
+    reports: list[RequestReport] = []
+    middleware = QuerySpyMiddleware(make_app(async_engine), on_report=reports.append)
+    await call(middleware)
+
+    report = reports[0]
+    assert report.db_duration_ms > 0
+    # Driver time is a subset of wall-clock time for the request.
+    assert report.db_duration_ms <= report.duration_ms
+    assert report.slowest is not None
+    assert report.slowest.sql.startswith("SELECT")
+
+
+@pytest.mark.asyncio
+async def test_panel_is_off_by_default(async_engine: object) -> None:
+    """It renders SQL shapes, so it must be opted into."""
+    middleware = QuerySpyMiddleware(make_app(async_engine))
+    sent = await call(middleware, path="/__queryspy__")
+    # Falls through to the app, which responds with its own body.
+    assert sent[-1]["body"] == b"ok"
+
+
+@pytest.mark.asyncio
+async def test_panel_serves_recorded_requests(async_engine: object) -> None:
+    middleware = QuerySpyMiddleware(make_app(async_engine), panel=True)
+    await call(middleware, path="/projects")
+
+    sent = await call(middleware, path="/__queryspy__")
+    headers = _headers(sent)
+    assert headers[b"content-type"] == b"text/html; charset=utf-8"
+    assert headers[b"cache-control"] == b"no-store"
+
+    page = sent[-1]["body"].decode()
+    assert "<!doctype html>" in page
+    assert "GET /projects" in page
+    assert "lazy_load" in page
+    assert "selectinload(User.addresses)" in page
+    # Self-contained: nothing is fetched from anywhere.
+    assert "http://" not in page
+    assert "https://" not in page
+
+
+@pytest.mark.asyncio
+async def test_panel_requests_are_not_themselves_recorded(async_engine: object) -> None:
+    middleware = QuerySpyMiddleware(make_app(async_engine), panel=True)
+    await call(middleware, path="/projects")
+    await call(middleware, path="/__queryspy__")
+
+    page = (await call(middleware, path="/__queryspy__"))[-1]["body"].decode()
+    assert page.count("__queryspy__") == 0
+    assert "1 request" in page
+
+
+@pytest.mark.asyncio
+async def test_panel_history_is_bounded(async_engine: object) -> None:
+    middleware = QuerySpyMiddleware(make_app(async_engine, limit=1), panel=True, history=2)
+    for _ in range(5):
+        await call(middleware)
+
+    assert len(middleware.history) == 2
+    page = (await call(middleware, path="/__queryspy__"))[-1]["body"].decode()
+    assert "2 requests" in page
+
+
+@pytest.mark.asyncio
+async def test_panel_path_is_configurable(async_engine: object) -> None:
+    middleware = QuerySpyMiddleware(make_app(async_engine), panel=True, panel_path="/_qs")
+    page = (await call(middleware, path="/_qs"))[-1]["body"].decode()
+    assert "queryspy" in page
