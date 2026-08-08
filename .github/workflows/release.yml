@@ -22,6 +22,8 @@ jobs:
       # rotate - the publisher is registered on PyPI under
       # project -> Settings -> Publishing for this workflow and environment.
       id-token: write
+      # Needed only to move the floating major tag after a successful publish.
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -85,3 +87,19 @@ jobs:
 
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      # The docs tell people to use `sqla-native/queryspy@v0`, which is the
+      # normal convention for a GitHub Action. That reference only works if a
+      # floating major tag exists and keeps moving - a manual one goes stale on
+      # the first release nobody remembers to update, and the documented snippet
+      # silently starts failing with "Unable to resolve action".
+      - name: Move the floating major tag
+        if: startsWith(github.ref_name, 'v') || github.event.inputs.tag != ''
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          MAJOR="$(echo "$TAG" | cut -d. -f1)"      # v0.3.0 -> v0
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f -a "$MAJOR" -m "Floating major tag -> $TAG" "$TAG^{commit}"
+          git push -f origin "$MAJOR"

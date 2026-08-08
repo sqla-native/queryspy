@@ -25,6 +25,10 @@ jobs:
 Findings appear as annotations on the pull request, on the exact line that
 caused them.
 
+`@v0` is a floating tag that moves with each release, so you get fixes without
+touching your workflow. Pin to an exact release (`@v0.3.0`) if you would rather
+control that yourself.
+
 The action deliberately does **not** install Python or your dependencies —
 every project installs differently, and guessing would be worse than composing.
 Set your environment up however you already do, then add the step.
