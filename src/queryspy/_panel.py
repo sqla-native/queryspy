@@ -20,7 +20,7 @@ from ._hints import hint_for
 
 if TYPE_CHECKING:
     from ._detect import Finding
-    from .asgi import RequestReport
+    from ._request import RequestReport
 
 __all__ = ["render_panel"]
 

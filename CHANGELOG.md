@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-08
+
+Closes the two gaps against `nplusone` that were worth closing. The others —
+unused eager-load detection, Django and Peewee support — remain declined, for
+the reasons in the design notes.
+
+### Added
+
+- **WSGI middleware** (`queryspy.wsgi.QuerySpyMiddleware`) for Flask and any
+  other WSGI application. Same options and same panel as the ASGI middleware.
+  This is the half of `nplusone`'s audience the ASGI middleware could not reach.
+
+  A WSGI app returns an *iterable*, and for a streaming response the queries
+  keep coming after `__call__` has returned — so the recording window stays open
+  and the returned iterable is wrapped. The report is emitted when it is
+  exhausted or closed, whichever comes first, which means streaming responses
+  are counted in full rather than reporting the one query issued before the body
+  started.
+
+- **`queryspy.ignore()`** — suppress findings for a block that is deliberately
+  doing what queryspy would otherwise flag. Queries inside it are **still
+  counted**: a query that ran, ran, and a budget that quietly under-reported
+  would be worse than no budget. Nests, works outside a recording window, and
+  follows the work across SQLAlchemy's greenlet bridge. Blunt by design — for
+  tolerating specific known findings use a baseline, for tolerating more round
+  trips raise the threshold.
+
+- A Flask example under `examples/flask_app/`, asserted in CI like the others.
+
+### Changed
+
+- `RequestReport` moved to `queryspy._request` and the shared middleware
+  behaviour to `queryspy._middleware`, so the two protocol modules hold only
+  their own plumbing. `from queryspy.asgi import RequestReport` is unchanged.
+
 ## [0.3.0] - 2026-08-05
 
 ### Added
@@ -110,6 +145,7 @@ Initial release.
 - Async support with no extra setup — `AsyncSession` wraps a sync `Session`,
   and listeners are registered on the class.
 
+[0.4.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.4.0
 [0.3.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.3.0
 [0.2.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.2.0
 [0.1.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.1.0

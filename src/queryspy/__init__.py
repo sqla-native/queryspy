@@ -22,6 +22,7 @@ from .api import (
     QuerySpyError,
     assert_max_queries,
     assert_num_queries,
+    ignore,
     no_n_plus_one,
     record,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "assert_max_queries",
     "assert_num_queries",
     "detect",
+    "ignore",
     "no_n_plus_one",
     "record",
     "render_finding",
@@ -48,4 +50,4 @@ __all__ = [
     "to_sarif",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

@@ -1,8 +1,8 @@
 # Examples
 
-A FastAPI + async SQLAlchemy service with one deliberate N+1, and tests that
-assert every queryspy feature against it. These run in CI — they are validation,
-not decoration.
+Two services with the same deliberate N+1 — one async on FastAPI, one sync on
+Flask — and tests that assert every queryspy feature against them. These run in
+CI; they are validation, not decoration.
 
 ```bash
 uv pip install -r requirements.txt
@@ -11,7 +11,7 @@ pytest examples -q
 
 ## What is in here
 
-`fastapi_app/app.py` exposes the same data two ways:
+Each app exposes the same data two ways:
 
 | Endpoint | Queries | |
 | --- | --- | --- |
@@ -24,9 +24,11 @@ The app mounts `QuerySpyMiddleware`, so both endpoints report themselves.
 
 | File | Validates |
 | --- | --- |
-| `test_endpoints.py` | The N+1 is detected; the fixed endpoint holds a 2-query budget |
-| `test_middleware.py` | Middleware counts, response headers, source attribution, **and concurrent-request isolation** |
-| `test_reporting.py` | SARIF points code scanning at the offending line; JSON carries the fix |
+| `fastapi_app/test_endpoints.py` | The N+1 is detected; the fixed endpoint holds a 2-query budget |
+| `fastapi_app/test_middleware.py` | ASGI counts, response headers, source attribution, **and concurrent-request isolation** |
+| `fastapi_app/test_reporting.py` | SARIF points code scanning at the offending line; JSON carries the fix |
+| `fastapi_app/test_panel.py` | The panel reflects real traffic, leaks no parameter values, and fetches nothing externally |
+| `flask_app/test_flask.py` | The **WSGI** middleware on a real Flask app, the panel, and `ignore()` |
 
 `test_endpoints.py::test_list_projects_has_no_n_plus_one` is an
 `xfail(strict=True)`: it is *expected* to fail, because the endpoint really does

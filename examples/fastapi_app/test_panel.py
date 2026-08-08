@@ -7,7 +7,8 @@ that happened, and that it leaks nothing it should not.
 from __future__ import annotations
 
 import httpx
-from app import app, seed
+
+from fastapi_app.app import app, seed
 
 
 async def _client() -> httpx.AsyncClient:
