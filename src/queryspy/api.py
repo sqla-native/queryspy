@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from ._detect import DEFAULT_THRESHOLD
-from ._recorder import Recorder, _resolve_session, start, stop
+from ._recorder import Recorder, _resolve_session, pop_ignore, push_ignore, start, stop
 from ._report import render_findings, render_timing
 
 if TYPE_CHECKING:
@@ -24,6 +24,7 @@ __all__ = [
     "QuerySpyError",
     "assert_max_queries",
     "assert_num_queries",
+    "ignore",
     "no_n_plus_one",
     "record",
 ]
@@ -62,6 +63,36 @@ def record(
         yield recorder
     finally:
         stop(recorder)
+
+
+@contextmanager
+def ignore() -> Iterator[None]:
+    """Suppress findings for statements issued inside the block.
+
+    The escape hatch for code that is deliberately doing something queryspy
+    would otherwise flag - a small admin loop, a migration script, a path where
+    the round trips are known and accepted::
+
+        with queryspy.ignore():
+            for account in accounts:
+                audit(account.owner)
+
+    Queries inside the block are **still counted**. A query that ran, ran, and a
+    budget that quietly under-reported would be worse than no budget. Only
+    detection is suppressed.
+
+    Blunt by design: there is no per-kind or per-relationship filtering. If you
+    want to tolerate specific known findings across a codebase, that is what a
+    baseline is for; if you want to tolerate a larger number of round trips, that
+    is what ``threshold`` is for.
+
+    Nests, and works whether or not a window is open.
+    """
+    previous = push_ignore()
+    try:
+        yield
+    finally:
+        pop_ignore(previous)
 
 
 @contextmanager

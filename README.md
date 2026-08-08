@@ -55,6 +55,16 @@ Mark the places where an N+1 is a deliberate trade-off:
 def test_admin_report(session): ...
 ```
 
+Or, in application code, for a block you know is doing round trips on purpose:
+
+```python
+with queryspy.ignore():
+    for account in accounts:
+        audit(account.owner)
+```
+
+Queries there are still counted — only detection is suppressed.
+
 ## What it catches
 
 Three detectors, applied in order of precision. Each claims the queries it
@@ -97,13 +107,17 @@ report with no source line.
 
 ## In your running app
 
-A per-request query panel for FastAPI, Starlette or Litestar. Pure ASGI3 — no
-framework dependency, no new packages.
+A per-request query panel for FastAPI, Starlette, Litestar — or Flask and
+anything else on WSGI. No framework dependency, no new packages.
 
 ```python
-from queryspy.asgi import QuerySpyMiddleware
+from queryspy.asgi import QuerySpyMiddleware  # FastAPI, Starlette, Litestar
 
 app.add_middleware(QuerySpyMiddleware, budget=10)
+
+from queryspy.wsgi import QuerySpyMiddleware  # Flask, Pyramid, Bottle
+
+app.wsgi_app = QuerySpyMiddleware(app.wsgi_app, budget=10)
 ```
 
 ```

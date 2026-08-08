@@ -71,10 +71,14 @@ from queryspy import render_finding, render_findings, to_dict, to_json, to_sarif
 `to_json` and `to_sarif` take `version=` and an optional `root=` for
 repo-relative paths.
 
-## ASGI
+## ASGI and WSGI
 
 ```python
-from queryspy.asgi import QuerySpyMiddleware, RequestReport
+from queryspy.asgi import QuerySpyMiddleware, RequestReport  # FastAPI, Starlette, Litestar
+from queryspy.wsgi import QuerySpyMiddleware, RequestReport  # Flask, Pyramid, Bottle
 ```
 
-See the [ASGI guide](asgi.md).
+See the [ASGI](asgi.md) and [WSGI](wsgi.md) guides.
+
+`RequestReport` carries `method`, `path`, `query_count`, `findings`,
+`duration_ms`, `db_duration_ms`, `slowest`, a `clean` property and `render()`.

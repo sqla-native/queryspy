@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 
 import httpx
-from app import REPORTS, app, seed
 
+from fastapi_app.app import REPORTS, app, seed
 from queryspy import to_json, to_sarif
 
 

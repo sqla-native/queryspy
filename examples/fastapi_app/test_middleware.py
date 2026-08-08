@@ -9,7 +9,8 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-from app import REPORTS, app, seed
+
+from fastapi_app.app import REPORTS, app, seed
 
 
 async def _client() -> httpx.AsyncClient:

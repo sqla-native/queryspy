@@ -41,6 +41,7 @@ nav:
       - pytest: pytest.md
       - Baselines: baseline.md
       - ASGI middleware: asgi.md
+      - WSGI middleware: wsgi.md
       - CI and code scanning: ci.md
   - Reference:
       - API: api.md

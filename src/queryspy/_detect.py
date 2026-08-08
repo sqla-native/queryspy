@@ -103,6 +103,9 @@ def _column_key(record: QueryRecord) -> str | None:
 
 def detect(records: list[QueryRecord], *, threshold: int = DEFAULT_THRESHOLD) -> list[Finding]:
     """Return every problem visible in one recording window, worst first."""
+    # Dropped before grouping, so an ignored block cannot even contribute to the
+    # count that pushes an unignored group over the threshold.
+    records = [record for record in records if not record.ignored]
     claimed: set[int] = set()
     everything = list(range(len(records)))
 

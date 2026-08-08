@@ -7,8 +7,8 @@ fix queryspy prints. Everything else passes.
 from __future__ import annotations
 
 import pytest
-from app import Sessionmaker, list_projects, list_projects_fixed, seed
 
+from fastapi_app.app import Sessionmaker, list_projects, list_projects_fixed, seed
 from queryspy import assert_max_queries, no_n_plus_one
 
 

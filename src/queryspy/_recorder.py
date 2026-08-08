@@ -87,6 +87,11 @@ class QueryRecord:
 
     frame: AppFrame | None
 
+    ignored: bool = False
+    """Executed inside a ``queryspy.ignore()`` block.
+
+    Still counted - a query that ran, ran - but excluded from detection."""
+
     @cached_property
     def sql(self) -> str:
         """The statement as a template, compiled on first use and then cached.
@@ -155,6 +160,25 @@ variables do propagate across SQLAlchemy's greenlet bridge, so this holds for
 async lazy loads too, which run in a spawned greenlet.
 """
 
+_ignore_depth: ContextVar[int] = ContextVar("queryspy_ignore_depth", default=0)
+"""How many nested ``ignore()`` blocks are open in this context.
+
+A depth rather than a flag so nesting composes, and a context variable for the
+same reason the active set is one: it has to follow the work, including across
+SQLAlchemy's greenlet bridge.
+"""
+
+
+def push_ignore() -> int:
+    token = _ignore_depth.get()
+    _ignore_depth.set(token + 1)
+    return token
+
+
+def pop_ignore(previous: int) -> None:
+    _ignore_depth.set(previous)
+
+
 # Listener *registration* is genuinely global, so it is refcounted separately
 # from the per-context recorder set. The lock covers threaded use, where two
 # threads may open their first window at the same moment.
@@ -207,6 +231,7 @@ def _on_orm_execute(state: ORMExecuteState) -> None:
         path=path,
         uselist=uselist,
         frame=frame,
+        ignored=_ignore_depth.get() > 0,
     )
     for recorder in listeners:
         recorder.orm_records.append(record)
