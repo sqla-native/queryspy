@@ -1,20 +1,21 @@
 version: 2
 updates:
-  # Dev tooling and the drivers used by the gated integration suite. The
-  # production closure is SQLAlchemy alone and is pinned only by a floor, so
-  # nothing here reaches consumers - but an unmaintained toolchain rots quietly
-  # and advisories in it go unseen.
+  # Python dependencies here are declared as FLOORS (`>=`), not pins - both the
+  # dev group and examples/requirements.txt. Nothing resolves against those
+  # floors: CI installs the latest matching release either way. So a version
+  # update PR against them changes nothing except making the declared floor
+  # narrower, and it arrives every week forever.
+  #
+  # `open-pull-requests-limit: 0` disables *version* updates while leaving
+  # security updates untouched, which is the half that carries real signal.
+  # Revisit if this project ever pins.
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
-    groups:
-      dev-tooling:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 0
 
-  # Actions pinned to a major (`@v4`) still need the major bumps.
+  # Actions ARE pinned (`@v4`), so these bumps are real and have to be taken.
   - package-ecosystem: github-actions
     directory: /
     schedule:

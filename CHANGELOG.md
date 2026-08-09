@@ -31,6 +31,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Dependabot was configured to send version updates for Python dependencies,
+  which are declared as floors rather than pins. Those PRs changed nothing —
+  CI resolves to the latest matching release regardless — while narrowing the
+  declared floor, and would have arrived every week indefinitely. Version
+  updates are now off for pip; **security updates are unaffected**, and GitHub
+  Actions bumps stay on because those are genuinely pinned.
+
+
 No library code changed, so there is nothing to release. What changed is the
 evidence that the library works.
 
