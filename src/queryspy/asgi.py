@@ -88,16 +88,15 @@ class QuerySpyMiddleware(MiddlewareCore):
             try:
                 await self.app(scope, receive, wrapped)
             finally:
-                # Emit inside the `finally`, not after the `with`: a request that
-                # raised is exactly the one whose queries you want to see, and
-                # the exception would otherwise skip the report entirely.
-                self.emit(
-                    self.build(
-                        str(scope.get("method", "?")),
-                        str(scope.get("path", "?")),
-                        recorder,
-                        started,
-                    )
+                # Report inside the `finally`, not after the `with`: a request
+                # that raised is exactly the one whose queries you want to see,
+                # and the exception would otherwise skip the report entirely.
+                # `report` never raises, so it can never mask that exception.
+                self.report(
+                    str(scope.get("method", "?")),
+                    str(scope.get("path", "?")),
+                    recorder,
+                    started,
                 )
 
     async def _serve_panel(self, send: Send) -> None:

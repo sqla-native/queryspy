@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Dev tooling and the drivers used by the gated integration suite. The
+  # production closure is SQLAlchemy alone and is pinned only by a floor, so
+  # nothing here reaches consumers - but an unmaintained toolchain rots quietly
+  # and advisories in it go unseen.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Actions pinned to a major (`@v4`) still need the major bumps.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
