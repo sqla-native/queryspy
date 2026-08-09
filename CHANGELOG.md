@@ -4,6 +4,51 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+No library code changed, so there is nothing to release. What changed is the
+evidence that the library works.
+
+### Testing
+
+- **Real databases.** `tests/integration` runs the three detectors, source
+  attribution, timing and the false-positive gate against **PostgreSQL and
+  MySQL**, sync and async (`psycopg`, `asyncpg`, `pymysql`, `aiomysql`) — on top
+  of the SQLite suite everything used to rest on. SQLite is in-process, uses `?`
+  parameters and has its own driver, so "it works on SQLite" was never evidence
+  that it worked anywhere else. The specs skip when the URLs are unset, so a
+  clone still runs green without Docker; CI runs them with service containers
+  and **fails if they skip**.
+- **Unusual mappings and hand-edited input** (`tests/test_robustness.py`):
+  nested relationship paths, self-referential trees, joined-table inheritance,
+  two engines in one window, Core-level execution, an empty window,
+  `threshold=1`, corrupt and partial baseline files, and a panel rendering fifty
+  findings.
+- **All three detectors now have end-to-end examples.** Previously only
+  `lazy_load` did — including `repeated_statement`, which is the shape no
+  relationship-load hook can see and therefore the strongest argument for the
+  library.
+- **Streaming WSGI responses, timing and thread concurrency** are exercised
+  against the real Flask app, not only in unit tests.
+- **The examples dogfood the gate they document.** Their deliberate N+1s live in
+  a committed baseline and CI runs them under `--queryspy-strict`, so detection
+  regressing in either direction — a new finding, or a known one disappearing —
+  fails the build.
+- A committed `compose.yaml` and `scripts/test-integration.sh` for running the
+  gated suite locally.
+
+### Documented behaviour that was previously only implicit
+
+- On joined-table inheritance a finding names the mapper that **declares** the
+  relationship (`Employee.notes`), not the one queried (`Manager`). That is
+  correct — `selectinload(Employee.notes)` is the option that fixes it — and it
+  is now asserted, including that the suggested fix actually resolves the
+  finding.
+- `QueryRecord.sql` is compiled with the **default** dialect, never the
+  backend's, so a finding's identity and therefore a baseline entry stay stable
+  across SQLite, Postgres and MySQL. Backend placeholder styles (`%(id_1)s`,
+  `%s`, `?`) must never leak into it.
+
 ## [0.4.0] - 2026-08-08
 
 Closes the two gaps against `nplusone` that were worth closing. The others —

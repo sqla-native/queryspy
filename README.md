@@ -263,6 +263,10 @@ ecosystem that already has working tools.
 
 Python 3.10+, SQLAlchemy 2.0+.
 
+Tested against **SQLite, PostgreSQL and MySQL**, sync and async (`psycopg`,
+`asyncpg`, `pymysql`, `aiomysql`, `aiosqlite`), on Python 3.10 through 3.14. The
+real-database suite runs in CI and fails if it skips.
+
 ## License
 
 MIT

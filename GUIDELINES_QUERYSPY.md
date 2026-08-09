@@ -157,7 +157,29 @@ assertion — the body's own exception wins.
 - Keep the pytest wrapper inert when no policy asks for anything, so a suite
   that uses neither the marker nor the flag pays nothing.
 
-### 6. Non-negotiable style
+### 6. Evidence, not assumption
+
+A green suite on one backend, one schema shape and well-formed input is not
+evidence that the library works. Every layer this project touches is close
+enough to SQLAlchemy's internals that "it should be fine" has already been wrong
+several times.
+
+Concretely, all of these are release gates:
+
+- **Real databases.** `tests/integration` runs the detectors, attribution and
+  timing against Postgres and MySQL, sync and async, on top of the SQLite suite.
+  CI fails if they skip.
+- **Unusual mappings.** `tests/test_robustness.py` covers nested relationship
+  paths, self-referential trees, joined-table inheritance, several engines in
+  one window, Core-level execution and hand-edited baseline files.
+- **The examples dogfood the gate.** Their deliberate N+1s live in a committed
+  baseline and CI runs them under `--queryspy-strict`, so detection regressing
+  in *either* direction - a new finding, or a known one disappearing - fails.
+
+When adding a feature, ask what shape of schema, backend or input would break it
+and add that case. When a claim goes in the docs, add the thing that proves it.
+
+### 7. Non-negotiable style
 
 - **100% test coverage** (branch included) on `src/queryspy`, enforced by
   `coverage` with `fail_under = 100`.
@@ -170,14 +192,14 @@ assertion — the body's own exception wins.
   guard exists only for an environment no test can produce, restructure the code
   to be total instead (see `_library_roots` using a set intersection).
 
-### 7. Strictness scope
+### 8. Strictness scope
 
 The non-negotiables above — 100% coverage, complexity ≤ 15, the single runtime
 dependency — govern the **core package** (`src/queryspy`). Non-core code
 (`examples/`, `scripts/`, `docs/`, dev tooling) runs lighter rules: dependency
 updates there may merge on green CI without ceremony.
 
-### 8. Security and supply chain (MANDATORY)
+### 9. Security and supply chain (MANDATORY)
 
 - Every PR includes a supply-chain pass.
 - **Audit scope:** the release gate audits the *published* surface. Build the
@@ -187,7 +209,7 @@ updates there may merge on green CI without ceremony.
   Dependabot's job and do not block a release.
 - No secrets in code, tests, examples, logs, or docs.
 
-### 9. Releasing
+### 10. Releasing
 
 Bump `version` in `pyproject.toml` **and** `__version__` in
 `src/queryspy/__init__.py` to the same value, then tag `vX.Y.Z` and push the

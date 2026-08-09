@@ -83,3 +83,10 @@ that — no patching, no private imports.
 ## Requirements
 
 Python 3.10+, SQLAlchemy 2.0+.
+
+Tested against **SQLite, PostgreSQL and MySQL**, sync and async (`psycopg`,
+`asyncpg`, `pymysql`, `aiomysql`, `aiosqlite`), on Python 3.10 through 3.14.
+
+The detectors, source attribution and timing are all exercised against real
+database servers in CI, not only SQLite — and that job fails if the specs skip,
+because a skipped suite reporting green looks like coverage that is not there.

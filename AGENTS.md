@@ -37,6 +37,24 @@ Coverage must be 100% including branches. Do not lower `fail_under`, do not add
 Mutation testing (`mutmut`) is an occasional local audit, never a per-PR step
 and never in CI. See the guidelines for the doctrine.
 
+## Real databases
+
+The default suite runs on SQLite. That is a reasonable default and a bad place
+to stop: Postgres and MySQL differ in parameter style, in the DBAPI, and - for
+async - in how the driver interacts with greenlets.
+
+```bash
+docker compose up -d --wait
+./scripts/test-integration.sh
+docker compose down -v
+```
+
+Those specs skip when the URLs are unset, so a clone runs green without Docker.
+CI runs them with service containers and **fails if they skip** - a skipped
+suite reporting green looks like coverage that is not there.
+
+Run them before any PR that touches `_recorder.py`, `_detect.py` or `_frames.py`.
+
 ## Changing detection
 
 Any change to `_detect.py` or `_recorder.py` must keep both suites passing

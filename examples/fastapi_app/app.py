@@ -41,6 +41,8 @@ class Task(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(50))
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"))
+    # Deferred so that touching it costs a round trip per instance.
+    notes: Mapped[str] = mapped_column(String(200), deferred=True, default="")
 
 
 engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
@@ -105,6 +107,33 @@ async def list_projects(session: AsyncSession = Depends(get_session)) -> list[di
         }
         for project in projects
     ]
+
+
+@app.get("/projects-by-id")
+async def list_projects_by_id(
+    session: AsyncSession = Depends(get_session),
+) -> list[dict[str, object]]:
+    """Fetched one at a time. Not an ORM lazy load at all.
+
+    No relationship-load hook ever fires here, which is precisely why
+    `nplusone` cannot see this shape. It is still three round trips where one
+    would do, and the repeated-statement detector catches it.
+    """
+    projects = []
+    for project_id in (1, 2, 3):
+        project = await session.get(Project, project_id)
+        if project is not None:
+            projects.append({"name": project.name})
+    return projects
+
+
+@app.get("/tasks-verbose")
+async def list_tasks_verbose(
+    session: AsyncSession = Depends(get_session),
+) -> list[dict[str, object]]:
+    """Touches a deferred column, so each task costs its own query."""
+    tasks = (await session.scalars(select(Task))).all()
+    return [{"title": t.title, "notes": await t.awaitable_attrs.notes} for t in tasks]
 
 
 @app.get("/projects-fixed")
