@@ -31,6 +31,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Testing
+
+- **First mutation audit.** 1,547 mutants, **1,190 killed, 356 survived, 1
+  timeout — a 77% score against a suite at 100% branch coverage.** Seven
+  survivors were real gaps in the detection core and are now closed
+  (`tests/test_mutation_gaps.py`), most notably: "findings are worst first" was
+  documented in four places and asserted in none; a `continue` becoming `break`
+  in the grouping loop would have let one harmless early query suppress every
+  later finding; and the milliseconds conversion in timing could have been wrong
+  by a factor of a million without a single test noticing, because every timing
+  assertion only checked `> 0`.
+- **`TESTING.md`** — the nine verification layers, what each one proves, which
+  to run for what you changed, and the audit results.
+- **`scripts/verify.sh`** — runs the whole hermetic ladder in about a minute;
+  `--all` adds the real databases.
+
+### Fixed
+
+- The committed `[tool.mutmut]` config used deprecated keys and **crashed
+  mutmut** on startup, so the workflow the constitution documented had never
+  actually run.
+
+
 ### Fixed
 
 - Dependabot was configured to send version updates for Python dependencies,

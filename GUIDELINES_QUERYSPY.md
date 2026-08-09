@@ -175,9 +175,18 @@ Concretely, all of these are release gates:
 - **The examples dogfood the gate.** Their deliberate N+1s live in a committed
   baseline and CI runs them under `--queryspy-strict`, so detection regressing
   in *either* direction - a new finding, or a known one disappearing - fails.
+- **Mutation testing, occasionally.** 100% coverage says a line ran, not that an
+  assertion would notice it changing. The first audit scored 77% and found seven
+  real gaps in the detection core, including that "findings are worst first" was
+  documented in four places and asserted in none. See `TESTING.md`.
 
 When adding a feature, ask what shape of schema, backend or input would break it
 and add that case. When a claim goes in the docs, add the thing that proves it.
+
+And when you write a test to close a gap, **watch it fail first**. One of the
+seven above passed against its own mutant on the first attempt, because the
+scenario produced a single finding and sorting one element cannot go wrong. A
+test is not a kill until you have seen it red.
 
 ### 7. Non-negotiable style
 

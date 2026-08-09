@@ -127,5 +127,8 @@ ignore_missing_imports = true
 # and never in CI. Scope every run to the file whose logic you reworked:
 #   mutmut run --paths-to-mutate src/queryspy/_detect.py
 [tool.mutmut]
-paths_to_mutate = "src/queryspy/"
-tests_dir = "tests/"
+source_paths = ["src/queryspy"]
+pytest_add_cli_args_test_selection = ["tests"]
+# The integration specs need databases and skip without them; a mutant is not
+# killed by a skip, so they only slow the run down.
+pytest_add_cli_args = ["-x", "-q", "--no-header", "-p", "no:cacheprovider"]

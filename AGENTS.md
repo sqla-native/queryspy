@@ -21,21 +21,21 @@ wrong and expensive to get wrong.
 
 ## Before opening a PR
 
-Run all of these and report the results in the PR body:
-
 ```bash
-.venv/bin/python -m coverage run -m pytest && .venv/bin/python -m coverage report
-.venv/bin/complexipy src/queryspy --max-complexity-allowed 15
-.venv/bin/ruff check . && .venv/bin/ruff format --check .
-.venv/bin/mypy
+./scripts/verify.sh          # everything hermetic. ~1 minute.
+./scripts/verify.sh --all    # adds the real-database suite. Needs Docker.
 ```
+
+[TESTING.md](TESTING.md) explains the nine layers, what each one proves, and
+which to run for what you changed. Report the results in the PR body.
 
 Coverage must be 100% including branches. Do not lower `fail_under`, do not add
 `# pragma: no cover` to reach it, and do not weaken a gate to make a change fit
 — restructure the code instead.
 
 Mutation testing (`mutmut`) is an occasional local audit, never a per-PR step
-and never in CI. See the guidelines for the doctrine.
+and never in CI — see TESTING.md, including the results of the first audit and
+why a test is not a kill until you have watched it fail.
 
 ## Real databases
 
