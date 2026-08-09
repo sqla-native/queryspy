@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-08-09
+
+### Fixed
+
+- **Reporting could break the request it was observing.** The middleware reports
+  from a `finally` around the application call, and nothing guarded it. A
+  user-supplied `on_report` callback that raised — or a misconfigured logging
+  handler — would fail a request that was otherwise healthy, and, worse,
+  *replace* the application's own exception with the diagnostics one, destroying
+  the traceback the developer needed.
+
+  Reporting can no longer raise. Failures are logged with their own traceback
+  rather than swallowed silently; if the logger is what broke, there is nowhere
+  left to report it and the request still wins. Applies to both the ASGI and
+  WSGI middleware.
+
+  The pytest plugin always had this property — "a failing test body always wins"
+  — and it simply had never been extended to the middleware.
+
+### Added
+
+- Dependabot for dev tooling and GitHub Actions. Nothing here reaches consumers
+  (the production closure is SQLAlchemy alone), but an unmaintained toolchain
+  rots quietly.
+
 ## [Unreleased]
 
 No library code changed, so there is nothing to release. What changed is the
@@ -190,6 +215,7 @@ Initial release.
 - Async support with no extra setup — `AsyncSession` wraps a sync `Session`,
   and listeners are registered on the class.
 
+[0.4.1]: https://github.com/sqla-native/queryspy/releases/tag/v0.4.1
 [0.4.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.4.0
 [0.3.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.3.0
 [0.2.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.2.0

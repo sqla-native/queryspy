@@ -122,7 +122,7 @@ class QuerySpyMiddleware(MiddlewareCore):
                 return
             done = True
             stop(recorder)
-            self.emit(self.build(method, path, recorder, started))
+            self.report(method, path, recorder, started)
 
         responder = self._wrap_start_response(start_response, recorder)
         try:

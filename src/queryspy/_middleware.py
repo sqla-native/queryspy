@@ -16,6 +16,7 @@ import logging
 import time
 from collections import deque
 from collections.abc import Callable
+from contextlib import suppress
 
 from . import __version__
 from ._detect import DEFAULT_THRESHOLD
@@ -87,6 +88,29 @@ class MiddlewareCore:
         if findings:
             headers.append(("x-queryspy-findings", str(len(findings))))
         return headers
+
+    def report(self, method: str, path: str, recorder: Recorder, started: float) -> None:
+        """Build and emit a report, never raising.
+
+        This runs from a ``finally`` around the application call, so anything
+        that escapes here does two unacceptable things: it fails a request that
+        was otherwise healthy, and - worse - it *replaces* the application's own
+        exception with one from the diagnostics tool, destroying the traceback
+        the developer actually needed.
+
+        A user-supplied ``on_report``, a misconfigured logging handler, or a bug
+        in detection can all raise. None of them are the request's problem.
+        """
+        try:
+            self.emit(self.build(method, path, recorder, started))
+        except Exception:
+            self._reporting_failed(method, path)
+
+    def _reporting_failed(self, method: str, path: str) -> None:
+        # The logger itself may be what broke. There is nowhere left to say so,
+        # and saying nothing is still better than breaking the request.
+        with suppress(Exception):
+            self.logger.exception("queryspy: failed to report on %s %s", method, path)
 
     def emit(self, report: RequestReport) -> None:
         if self.panel:
