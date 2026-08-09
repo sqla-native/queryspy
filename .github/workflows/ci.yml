@@ -185,3 +185,70 @@ jobs:
       - run: uv pip install --system -e . --group dev
       - run: uv pip install --system -r examples/requirements.txt
       - run: pytest examples -q
+
+      # The examples dogfood the gate they document. Their deliberate N+1s are
+      # recorded in a committed baseline, so this fails if detection regresses
+      # in either direction: a new finding appears, or a known one stops being
+      # found and shows up as a stale entry.
+      - name: Examples under the strict gate
+        run: |
+          pytest examples -q --queryspy-strict \
+            --queryspy-baseline=examples/queryspy-baseline.json | tee examples-gate.log
+          if grep -q "no longer occur" examples-gate.log; then
+            echo "::error::a baselined finding stopped occurring - detection may have regressed"
+            exit 1
+          fi
+
+  integration:
+    name: Real databases (Postgres + MySQL)
+    runs-on: ubuntu-latest
+    # Everything else runs on SQLite. SQLite is in-process, uses `?` parameters
+    # and has its own driver; Postgres and MySQL differ in parameter style, in
+    # the DBAPI, and - for async - in how the driver interacts with greenlets.
+    # "It works on SQLite" is not evidence that it works anywhere else.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: queryspy
+          POSTGRES_PASSWORD: queryspy
+          POSTGRES_DB: queryspy
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U queryspy"
+          --health-interval=2s --health-timeout=3s --health-retries=30
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: queryspy
+          MYSQL_USER: queryspy
+          MYSQL_PASSWORD: queryspy
+          MYSQL_ROOT_PASSWORD: queryspy
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pqueryspy"
+          --health-interval=3s --health-timeout=5s --health-retries=40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv pip install --system -e . --group dev
+
+      - name: Run the gated suite
+        env:
+          QUERYSPY_POSTGRES_URL: postgresql+psycopg://queryspy:queryspy@127.0.0.1:5432/queryspy
+          QUERYSPY_POSTGRES_ASYNC_URL: postgresql+asyncpg://queryspy:queryspy@127.0.0.1:5432/queryspy
+          QUERYSPY_MYSQL_URL: mysql+pymysql://queryspy:queryspy@127.0.0.1:3306/queryspy
+          QUERYSPY_MYSQL_ASYNC_URL: mysql+aiomysql://queryspy:queryspy@127.0.0.1:3306/queryspy
+        run: |
+          pytest tests/integration -v | tee integration.log
+          # A skipped integration suite that reports green is worse than no
+          # suite: it looks like coverage that is not there. These specs skip
+          # themselves when a URL is missing, which is right for a fork and
+          # wrong here.
+          if grep -qE "[0-9]+ skipped" integration.log; then
+            echo "::error::integration specs skipped - a database URL is not reaching them"
+            exit 1
+          fi

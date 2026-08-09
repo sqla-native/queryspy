@@ -28,7 +28,8 @@ The app mounts `QuerySpyMiddleware`, so both endpoints report themselves.
 | `fastapi_app/test_middleware.py` | ASGI counts, response headers, source attribution, **and concurrent-request isolation** |
 | `fastapi_app/test_reporting.py` | SARIF points code scanning at the offending line; JSON carries the fix |
 | `fastapi_app/test_panel.py` | The panel reflects real traffic, leaks no parameter values, and fetches nothing externally |
-| `flask_app/test_flask.py` | The **WSGI** middleware on a real Flask app, the panel, and `ignore()` |
+| `fastapi_app/test_detectors.py` | **All three detectors** end to end — `lazy_load`, `column_load`, `repeated_statement` |
+| `flask_app/test_flask.py` | The **WSGI** middleware on a real Flask app, streaming responses, timing, thread concurrency, the panel, and `ignore()` |
 
 `test_endpoints.py::test_list_projects_has_no_n_plus_one` is an
 `xfail(strict=True)`: it is *expected* to fail, because the endpoint really does
@@ -49,5 +50,17 @@ N+1 detected: 3 queries for Project.tasks (lazy load)
   fix: .options(selectinload(Project.tasks))
 ```
 
+## The examples dogfood the gate
+
+Their deliberate N+1s are recorded in `queryspy-baseline.json`, and CI runs:
+
+```bash
+pytest examples --queryspy-strict --queryspy-baseline=examples/queryspy-baseline.json
+```
+
+That fails if detection regresses in **either** direction — a new finding
+appears, or a known one stops being found and shows up as a stale entry. It is
+the closest thing to a real user's workflow that can run in our own CI.
+
 This directory sits outside the core package's strictness scope — see
-`GUIDELINES_QUERYSPY.md` section 6.
+`GUIDELINES_QUERYSPY.md` section 8.

@@ -1,0 +1,37 @@
+# Disposable databases for the gated integration suite.
+#
+#   docker compose up -d --wait
+#   ./scripts/test-integration.sh
+#   docker compose down -v
+#
+# The default test run needs none of this: those specs skip unless the matching
+# environment variable is set, so a fork clones and runs green with no Docker.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: queryspy
+      POSTGRES_PASSWORD: queryspy
+      POSTGRES_DB: queryspy
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U queryspy"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: queryspy
+      MYSQL_USER: queryspy
+      MYSQL_PASSWORD: queryspy
+      MYSQL_ROOT_PASSWORD: queryspy
+    ports:
+      - "53306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -pqueryspy"]
+      interval: 3s
+      timeout: 5s
+      retries: 40

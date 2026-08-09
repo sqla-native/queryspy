@@ -69,3 +69,60 @@ def test_ignore_suppresses_a_deliberate_loop(client):
 
     assert spy.findings() == []
     assert spy.query_count == 4  # still counted
+
+
+def test_streaming_response_is_counted_in_full(client):
+    """The hardest correctness problem in the WSGI middleware, end to end.
+
+    Every query happens while the body is being consumed. If the window closed
+    when the view returned, this would report one query and no finding.
+    """
+    response = client.get("/projects-stream")
+    body = response.get_data(as_text=True)
+
+    assert body.count("\n") == 3
+    report = REPORTS[-1]
+    assert report.query_count == 4
+    assert [f.kind for f in report.findings] == ["lazy_load"]
+    # Headers were written before the body ran, so they show the count then.
+    assert response.headers["x-queryspy-queries"] == "0"
+
+
+def test_timing_is_reported(client):
+    response = client.get("/slow")
+    response.get_data()
+
+    report = REPORTS[-1]
+    assert report.db_duration_ms > 0
+    assert report.db_duration_ms <= report.duration_ms
+    assert report.slowest is not None
+    assert report.clean  # two queries, no N+1 - the story here is time, not shape
+
+
+def test_concurrent_wsgi_requests_are_isolated():
+    """Threads, which is how a real WSGI server serves concurrently."""
+    import threading
+
+    from flask_app.app import app as flask_app
+
+    seed()
+    REPORTS.clear()
+    barrier = threading.Barrier(2)
+
+    def hit(path: str) -> None:
+        local = flask_app.test_client()
+        barrier.wait()
+        local.get(path).get_data()
+
+    threads = [
+        threading.Thread(target=hit, args=("/projects-fixed",)),
+        threading.Thread(target=hit, args=("/projects",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    by_path = {r.path: r.query_count for r in REPORTS}
+    assert by_path["/projects-fixed"] == 2
+    assert by_path["/projects"] == 4

@@ -6,8 +6,10 @@ half of nplusone's audience that the ASGI middleware does not reach.
 
 from __future__ import annotations
 
-from flask import Flask, jsonify
-from sqlalchemy import ForeignKey, String, create_engine, select
+import time
+
+from flask import Flask, jsonify, stream_with_context
+from sqlalchemy import ForeignKey, String, create_engine, select, text
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -74,6 +76,38 @@ def list_projects_fixed() -> object:
     with Session(engine) as session:
         projects = session.scalars(select(Project).options(selectinload(Project.tasks))).all()
         return jsonify([{"name": p.name, "tasks": [t.title for t in p.tasks]} for p in projects])
+
+
+@app.get("/projects-stream")
+def stream_projects():
+    """A streaming response: the queries run *after* the view returns.
+
+    This is the case that makes WSGI harder than ASGI. Finalising when the app
+    returns would count one query; the window stays open until the iterable is
+    exhausted, so all four are counted.
+    """
+
+    @stream_with_context
+    def generate():
+        with Session(engine) as session:
+            for project in session.scalars(select(Project)).all():
+                yield f"{project.name}:{len(project.tasks)}\n"
+
+    return app.response_class(generate(), mimetype="text/plain")
+
+
+@app.get("/slow")
+def slow():
+    """Few queries, one of which dominates.
+
+    The headline is not always an N+1. Two queries where one takes most of the
+    time is a slow query, and the timing figures are what say so.
+    """
+    with Session(engine) as session:
+        session.scalars(select(Project)).all()
+        session.execute(text("SELECT 1")).all()
+        time.sleep(0)  # keep the shape obvious without making the suite slow
+        return jsonify({"ok": True})
 
 
 # `on_report` is here so the tests can assert on what the middleware saw; in a

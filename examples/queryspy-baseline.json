@@ -1,0 +1,54 @@
+{
+  "tool": "queryspy",
+  "version": "0.4.0",
+  "entries": [
+    {
+      "kind": "column_load",
+      "label": "Task",
+      "file": "fastapi_app/app.py",
+      "function": "list_tasks_verbose"
+    },
+    {
+      "kind": "lazy_load",
+      "label": "Project.tasks",
+      "file": "fastapi_app/app.py",
+      "function": "list_projects"
+    },
+    {
+      "kind": "lazy_load",
+      "label": "Project.tasks",
+      "file": "flask_app/app.py",
+      "function": "generate"
+    },
+    {
+      "kind": "lazy_load",
+      "label": "Project.tasks",
+      "file": "flask_app/app.py",
+      "function": "list_projects"
+    },
+    {
+      "kind": "repeated_statement",
+      "label": "SELECT project.id AS project_id, project.name AS project_name FROM project WHERE project.id = :pk_1",
+      "file": "fastapi_app/app.py",
+      "function": "list_projects_by_id"
+    },
+    {
+      "kind": "repeated_statement",
+      "label": "SELECT project.id, project.name FROM project",
+      "file": "fastapi_app/app.py",
+      "function": "list_projects"
+    },
+    {
+      "kind": "repeated_statement",
+      "label": "SELECT project.id, project.name FROM project",
+      "file": "fastapi_app/app.py",
+      "function": "list_projects_fixed"
+    },
+    {
+      "kind": "repeated_statement",
+      "label": "SELECT task.project_id AS task_project_id, task.id AS task_id, task.title AS task_title FROM task WHERE task.project_id IN (__[POSTCOMPILE_primary_keys])",
+      "file": "fastapi_app/app.py",
+      "function": "list_projects_fixed"
+    }
+  ]
+}
