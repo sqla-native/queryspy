@@ -1,4 +1,4 @@
-fastapi>=0.110
+fastapi>=0.141.1
 httpx>=0.27
 aiosqlite>=0.19
 pytest>=8
