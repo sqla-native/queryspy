@@ -108,11 +108,14 @@ def test_concurrent_wsgi_requests_are_isolated():
     seed()
     REPORTS.clear()
     barrier = threading.Barrier(2)
+    statuses: dict[str, int] = {}
 
     def hit(path: str) -> None:
         local = flask_app.test_client()
         barrier.wait()
-        local.get(path).get_data()
+        response = local.get(path)
+        response.get_data()
+        statuses[path] = response.status_code
 
     threads = [
         threading.Thread(target=hit, args=("/projects-fixed",)),
@@ -123,6 +126,11 @@ def test_concurrent_wsgi_requests_are_isolated():
     for thread in threads:
         thread.join()
 
+    # A request that died halfway reports fewer queries than it should have
+    # issued, which would read here as a wrong count rather than as the failure
+    # it is. Check the responses first, so the counts below only ever speak
+    # about attribution.
+    assert statuses == {"/projects-fixed": 200, "/projects": 200}
     by_path = {r.path: r.query_count for r in REPORTS}
     assert by_path["/projects-fixed"] == 2
     assert by_path["/projects"] == 4

@@ -6,7 +6,9 @@ half of nplusone's audience that the ASGI middleware does not reach.
 
 from __future__ import annotations
 
+import tempfile
 import time
+from pathlib import Path
 
 from flask import Flask, jsonify, stream_with_context
 from sqlalchemy import ForeignKey, String, create_engine, select, text
@@ -18,7 +20,6 @@ from sqlalchemy.orm import (
     relationship,
     selectinload,
 )
-from sqlalchemy.pool import StaticPool
 
 from queryspy.wsgi import QuerySpyMiddleware, RequestReport
 
@@ -43,7 +44,15 @@ class Task(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"))
 
 
-engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+# A file, not `sqlite://` + StaticPool. WSGI serves concurrently on threads, and
+# StaticPool is one DBAPI connection handed to every session: two requests then
+# share a connection record, one of them checks it in twice (SQLAlchemy warns
+# "Double checkin attempted"), and the other reads rows back as None and fails
+# mid-request with fewer queries than it should have issued. That is a bug in
+# the example, not something the middleware can attribute its way out of. A
+# file database gets SQLAlchemy's default QueuePool, so each thread checks out
+# its own connection, which is also what a real deployment on SQLite does.
+engine = create_engine(f"sqlite:///{Path(tempfile.mkdtemp(prefix='queryspy-flask-')) / 'demo.db'}")
 
 app = Flask(__name__)
 

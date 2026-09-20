@@ -52,6 +52,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The committed `[tool.mutmut]` config used deprecated keys and **crashed
   mutmut** on startup, so the workflow the constitution documented had never
   actually run.
+- **The Flask example could fail under concurrent requests, and hid it as a
+  wrong count.** Its engine was `sqlite://` with `StaticPool`: one DBAPI
+  connection handed to every session, so two WSGI threads shared a connection
+  record, one checked it in twice (SQLAlchemy's "Double checkin attempted"),
+  and the other read rows back as `None` and died mid-request — which
+  `test_concurrent_wsgi_requests_are_isolated` reported as `1 == 4` because it
+  never looked at the status codes. Provoked deterministically with a tiny
+  thread switch interval: 56 failed requests in 1,500 pairs; 0 after the fix.
+  The example now uses a file database (SQLAlchemy's default `QueuePool`, one
+  connection per thread, as a real SQLite deployment has), and the test asserts
+  both responses were 200 before it compares counts. Attribution was never at
+  fault; `main` had been red on that run since 2026-08-09. (#16)
+- **`action.yml` was unparseable to Dependabot.** One unquoted input
+  description contained `security-events: write`, which strict YAML reads as a
+  nested mapping; GitHub's own Actions parser is lenient, so the action ran
+  fine, but Dependabot's github-actions updater had failed every weekly run
+  since 2026-08-09 and produced no actions bumps. Quoted. (#15)
 
 
 ### Fixed
