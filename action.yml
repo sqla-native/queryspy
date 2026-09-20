@@ -33,7 +33,7 @@ inputs:
     required: false
     default: "false"
   upload:
-    description: Upload the SARIF to GitHub code scanning. Needs security-events: write.
+    description: "Upload the SARIF to GitHub code scanning. Needs security-events: write."
     required: false
     default: "true"
   working-directory:
