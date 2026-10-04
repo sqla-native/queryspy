@@ -12,7 +12,7 @@ that uses neither pays nothing.
 
 from __future__ import annotations
 
-from collections.abc import Generator, Iterator
+from collections.abc import Generator, Iterable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -25,7 +25,7 @@ from ._baseline import load as load_baseline
 from ._baseline import save as save_baseline
 from ._baseline import split as split_baseline
 from ._baseline import stale as stale_entries
-from ._detect import DEFAULT_THRESHOLD, Finding
+from ._detect import DEFAULT_THRESHOLD, KINDS, Finding
 from ._recorder import Recorder
 from ._report import render_findings
 from ._serialize import to_json, to_sarif
@@ -36,6 +36,8 @@ __all__ = ["queryspy"]
 _MARKER = "queryspy"
 _FINDINGS: pytest.StashKey[list[Finding]] = pytest.StashKey()
 _BASELINE: pytest.StashKey[set[BaselineEntry]] = pytest.StashKey()
+_FAIL_ON: pytest.StashKey[frozenset[str]] = pytest.StashKey()
+_ALL_KINDS = frozenset(KINDS)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -53,7 +55,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
     parser.addini(
         "queryspy_fail_on",
-        help="Set to 'n_plus_one' to fail tests that trigger an N+1. Default 'none'.",
+        help=(
+            "Which findings fail a test: 'none' (default), 'n_plus_one' (every kind), "
+            "or a comma-separated list of kinds: " + ", ".join(KINDS) + "."
+        ),
         default="none",
     )
     parser.addini(
@@ -91,9 +96,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        f"{_MARKER}(max_queries=None, allow_n_plus_one=False, threshold=2): "
+        f"{_MARKER}(max_queries=None, allow_n_plus_one=False, threshold=2, fail_on=None): "
         "per-test query budget and N+1 policy.",
     )
+    try:
+        config.stash[_FAIL_ON] = _parse_fail_on(config.getini("queryspy_fail_on"))
+    except ValueError as error:
+        raise pytest.UsageError(f"queryspy_fail_on: {error}") from None
     path = _baseline_path(config)
     if path is not None:
         config.stash[_BASELINE] = load_baseline(path)
@@ -104,10 +113,34 @@ def _baseline_path(config: pytest.Config) -> Path | None:
     return None if raw is None else Path(str(raw))
 
 
+def _parse_fail_on(value: str | Iterable[str]) -> frozenset[str]:
+    """The finding kinds a ``fail_on`` value gates on.
+
+    ``none`` gates on nothing, ``n_plus_one`` on every kind, and anything else
+    is a comma-separated string or an iterable of kind names. An unknown name
+    raises ``ValueError``, so a typo cannot quietly turn the gate off.
+    """
+    names = value.split(",") if isinstance(value, str) else list(value)
+    kinds: set[str] = set()
+    for raw in names:
+        name = raw.strip()
+        if name in ("", "none"):
+            continue
+        if name == "n_plus_one":
+            kinds |= _ALL_KINDS
+        elif name in _ALL_KINDS:
+            kinds.add(name)
+        else:
+            expected = ", ".join(("none", "n_plus_one", *KINDS))
+            raise ValueError(f"unknown value {name!r}; expected one of {expected}")
+    return frozenset(kinds)
+
+
 @dataclass(frozen=True)
 class _Policy:
     max_queries: int | None
-    check_n_plus_one: bool
+    fail_on: frozenset[str]
+    """The finding kinds that fail the test; empty when none do."""
     threshold: int
     capture_stacks: bool
     collect: bool
@@ -116,7 +149,7 @@ class _Policy:
 
     @property
     def active(self) -> bool:
-        return self.max_queries is not None or self.check_n_plus_one or self.collect
+        return self.max_queries is not None or bool(self.fail_on) or self.collect
 
 
 def _ini_budget(config: pytest.Config) -> int | None:
@@ -124,27 +157,36 @@ def _ini_budget(config: pytest.Config) -> int | None:
     return int(raw) if raw else None
 
 
+def _session_fail_on(config: pytest.Config) -> frozenset[str]:
+    if config.getoption("--queryspy-strict"):
+        return _ALL_KINDS
+    return config.stash[_FAIL_ON]
+
+
+def _marker_fail_on(marker: pytest.Mark, fail_on: frozenset[str]) -> frozenset[str]:
+    if marker.kwargs.get("allow_n_plus_one", False):
+        return frozenset()
+    if "fail_on" in marker.kwargs:
+        return _parse_fail_on(marker.kwargs["fail_on"])
+    return fail_on
+
+
 def _resolve_policy(item: pytest.Item) -> _Policy:
     config = item.config
     max_queries = _ini_budget(config)
     updating = bool(config.getoption("--queryspy-baseline-update"))
-    check = (
-        bool(config.getoption("--queryspy-strict"))
-        or str(config.getini("queryspy_fail_on")) == "n_plus_one"
-    )
-    # Rewriting the baseline is a recording run, not an enforcing one.
-    check = check and not updating
+    fail_on = _session_fail_on(config)
     threshold = DEFAULT_THRESHOLD
 
     marker = item.get_closest_marker(_MARKER)
     if marker is not None:
         max_queries = marker.kwargs.get("max_queries", max_queries)
         threshold = marker.kwargs.get("threshold", threshold)
-        if marker.kwargs.get("allow_n_plus_one", False):
-            check = False
+        fail_on = _marker_fail_on(marker, fail_on)
     return _Policy(
         max_queries=max_queries,
-        check_n_plus_one=check,
+        # Rewriting the baseline is a recording run, not an enforcing one.
+        fail_on=frozenset() if updating else fail_on,
         threshold=threshold,
         capture_stacks=bool(config.getini("queryspy_capture_stacks")),
         collect=config.getoption("--queryspy-report") is not None or updating,
@@ -161,9 +203,13 @@ def _enforce(
         raise QueryCountError(
             f"expected at most {policy.max_queries} queries, got {recorder.query_count}"
         )
-    if not policy.check_n_plus_one:
+    if not policy.fail_on:
         return
-    findings = recorder.findings(threshold=policy.threshold)
+    findings = [
+        finding
+        for finding in recorder.findings(threshold=policy.threshold)
+        if finding.kind in policy.fail_on
+    ]
     if baseline is not None:
         findings, _known = split_baseline(findings, baseline, root=root)
     if findings:

@@ -51,6 +51,7 @@ def test_admin_report(session): ...
 | `max_queries` | Per-test budget; overrides `queryspy_budget` |
 | `allow_n_plus_one` | Exempt this test from the N+1 gate |
 | `threshold` | Repeats required before something is a finding |
+| `fail_on` | Which finding kinds fail this test; same values as `queryspy_fail_on`, as a string or a list. `allow_n_plus_one=True` still wins |
 
 ## Command line and ini
 
@@ -60,6 +61,7 @@ def test_admin_report(session): ...
 | `--queryspy-report=PATH` | Write a session report (`.sarif` or `.json`) |
 | `--queryspy-report-format` | `auto` (default), `json`, or `sarif` |
 | `queryspy_fail_on = n_plus_one` | The ini equivalent of `--queryspy-strict` |
+| `queryspy_fail_on = lazy_load,column_load` | Fail only on the listed finding kinds (see below) |
 | `queryspy_budget = 10` | Maximum statements per test |
 | `queryspy_capture_stacks = false` | Skip source attribution |
 | `--queryspy-baseline=PATH` | Tolerate findings recorded in PATH ([baselines](baseline.md)) |
@@ -70,6 +72,26 @@ def test_admin_report(session): ...
 queryspy_fail_on = "n_plus_one"
 queryspy_budget = 25
 ```
+
+### Gating on some kinds only
+
+`queryspy_fail_on` also takes a comma-separated list of
+[finding kinds](detectors.md): `lazy_load`, `column_load` and
+`repeated_statement`. Only those fail a test; the others are still recorded,
+so they show up in a report and can be baselined.
+
+```toml
+[tool.pytest.ini_options]
+# Gate on the two precise detectors now; adopt the repeated-statement backstop
+# later, through a baseline.
+queryspy_fail_on = "lazy_load,column_load"
+```
+
+That is the adoption path the detectors' precision suggests: `lazy_load` and
+`column_load` are rarely wrong, while `repeated_statement` also counts lookups
+that a shared test session makes look identical. `--queryspy-strict` always
+gates on every kind, and an unknown name is a usage error, so a typo cannot
+quietly turn the gate off.
 
 !!! tip "Cost"
 

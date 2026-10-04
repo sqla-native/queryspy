@@ -25,7 +25,10 @@ if TYPE_CHECKING:
     from ._frames import AppFrame
     from ._recorder import QueryRecord
 
-__all__ = ["Finding", "detect"]
+__all__ = ["KINDS", "Finding", "detect"]
+
+KINDS = ("lazy_load", "column_load", "repeated_statement")
+"""Every finding kind, in detector order: most precise first."""
 
 DEFAULT_THRESHOLD = 2
 """Two identical round trips is already the N+1 shape - one per parent row. A

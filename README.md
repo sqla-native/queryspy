@@ -214,6 +214,7 @@ exception is never masked.
 | `--queryspy-strict` | Fail any test that triggers an N+1 |
 | `queryspy_budget = 10` | Maximum statements per test |
 | `queryspy_fail_on = n_plus_one` | The ini equivalent of `--queryspy-strict` |
+| `queryspy_fail_on = lazy_load,column_load` | Fail only on the listed finding kinds |
 | `queryspy_capture_stacks = false` | Skip source attribution |
 | `queryspy` fixture | A live recorder, for tests that want to inspect queries themselves |
 

@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`queryspy_fail_on` takes a list of finding kinds** (#14). Besides `none` and
+  `n_plus_one`, it accepts a comma-separated list of `lazy_load`,
+  `column_load` and `repeated_statement`, and only those kinds fail a test; the
+  rest are still recorded for reports and baselines. A suite can gate on the
+  two precise detectors at once and adopt the repeated-statement backstop
+  later. The `queryspy` marker takes the same values as `fail_on=` (a string
+  or a list). An unknown name is a usage error, so a typo cannot turn the gate
+  off; `--queryspy-strict` still gates on every kind.
+
 ### Fixed
 
 - **A baseline no longer breaks when SQLAlchemy is upgraded to 2.1.** SQLAlchemy
