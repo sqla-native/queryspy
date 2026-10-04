@@ -38,6 +38,7 @@ Identity is `(kind, label, file, function)`. Three things are deliberately
 | Line number | An unrelated edit above shifts every finding down. Keying on the line would expire the whole baseline on a formatting change |
 | Count | A bigger fixture turns 11 queries into 14. Same bug |
 | Which test found it | Findings are attributed to the ORM call site, so two tests exercising the same helper are one entry |
+| Column aliases in the SQL | SQLAlchemy 2.0 renders `SELECT project.id AS project_id`; 2.1 renders `SELECT project.id`. Labels are compared with every `AS <alias>` removed, so a baseline recorded on one version gates a suite on the other, and a file written before 0.5 still matches |
 
 That last one has a consequence worth being explicit about: **adding a test that
 touches known-bad code is not a regression** and will not fail the build.
