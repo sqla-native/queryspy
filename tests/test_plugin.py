@@ -57,9 +57,14 @@ def n_plus_one(session):
 def eager(session):
     for user in session.scalars(select(User).options(selectinload(User.addresses))).all():
         list(user.addresses)
+
+
+def one_by_one(session):
+    for user_id in (1, 2, 3):
+        session.get(User, user_id)
 """
 
-_IMPORTS = "from conftest import eager, n_plus_one\n"
+_IMPORTS = "from conftest import eager, n_plus_one, one_by_one\n"
 
 
 @pytest.fixture
@@ -133,6 +138,98 @@ def test_ini_fail_on_n_plus_one(project: pytest.Pytester) -> None:
     result = run(project)
     result.assert_outcomes(failed=1)
     result.stdout.fnmatch_lines(["*N+1 detected*"])
+
+
+# One lazy-load offender and one repeated-statement offender, so a per-kind gate
+# can be seen failing one and passing the other.
+_BOTH_KINDS = (
+    "def test_lazy(session):\n    n_plus_one(session)\n\n"
+    "def test_repeated(session):\n    one_by_one(session)\n"
+)
+
+
+def test_ini_fail_on_gates_only_the_listed_kinds(project: pytest.Pytester) -> None:
+    project.makeini("[pytest]\nqueryspy_fail_on = lazy_load, column_load\n")
+    write(project, _BOTH_KINDS)
+    result = run(project)
+    result.assert_outcomes(failed=1, passed=1)
+    result.stdout.fnmatch_lines(["FAILED *::test_lazy*"])
+
+
+def test_ini_fail_on_can_gate_the_repeated_statement_backstop_alone(
+    project: pytest.Pytester,
+) -> None:
+    project.makeini("[pytest]\nqueryspy_fail_on = repeated_statement\n")
+    write(project, _BOTH_KINDS)
+    result = run(project)
+    result.assert_outcomes(failed=1, passed=1)
+    result.stdout.fnmatch_lines(["FAILED *::test_repeated*"])
+
+
+def test_ini_fail_on_n_plus_one_gates_every_kind(project: pytest.Pytester) -> None:
+    project.makeini("[pytest]\nqueryspy_fail_on = n_plus_one\n")
+    write(project, _BOTH_KINDS)
+    run(project).assert_outcomes(failed=2)
+
+
+def test_ini_fail_on_ignores_none_and_empty_entries(project: pytest.Pytester) -> None:
+    project.makeini("[pytest]\nqueryspy_fail_on = none,, lazy_load\n")
+    write(project, _BOTH_KINDS)
+    run(project).assert_outcomes(failed=1, passed=1)
+
+
+def test_ini_fail_on_rejects_an_unknown_kind(project: pytest.Pytester) -> None:
+    """A typo must not quietly turn the gate off."""
+    project.makeini("[pytest]\nqueryspy_fail_on = lazy_loads\n")
+    write(project, _BOTH_KINDS)
+    result = run(project)
+    assert result.ret == pytest.ExitCode.USAGE_ERROR
+    result.stderr.fnmatch_lines(["*queryspy_fail_on: unknown value 'lazy_loads'*"])
+
+
+def test_strict_flag_gates_every_kind_whatever_the_ini(project: pytest.Pytester) -> None:
+    project.makeini("[pytest]\nqueryspy_fail_on = lazy_load\n")
+    write(project, _BOTH_KINDS)
+    run(project, "--queryspy-strict").assert_outcomes(failed=2)
+
+
+def test_marker_fail_on_overrides_the_ini(project: pytest.Pytester) -> None:
+    project.makeini("[pytest]\nqueryspy_fail_on = lazy_load\n")
+    write(
+        project,
+        "import pytest\n\n"
+        "@pytest.mark.queryspy(fail_on='repeated_statement')\n"
+        "def test_repeated_gated(session):\n    one_by_one(session)\n\n"
+        "@pytest.mark.queryspy(fail_on=['column_load'])\n"
+        "def test_lazy_not_gated(session):\n    n_plus_one(session)\n\n"
+        "@pytest.mark.queryspy(fail_on='none')\n"
+        "def test_lazy_opted_out(session):\n    n_plus_one(session)\n",
+    )
+    result = run(project)
+    result.assert_outcomes(failed=1, passed=2)
+    result.stdout.fnmatch_lines(["FAILED *::test_repeated_gated*"])
+
+
+def test_allow_n_plus_one_wins_over_a_marker_fail_on(project: pytest.Pytester) -> None:
+    write(
+        project,
+        "import pytest\n\n"
+        "@pytest.mark.queryspy(fail_on='lazy_load', allow_n_plus_one=True)\n"
+        "def test_known(session):\n    n_plus_one(session)\n",
+    )
+    run(project, "--queryspy-strict").assert_outcomes(passed=1)
+
+
+def test_marker_fail_on_rejects_an_unknown_kind(project: pytest.Pytester) -> None:
+    write(
+        project,
+        "import pytest\n\n"
+        "@pytest.mark.queryspy(fail_on='lazy-load')\n"
+        "def test_typo(session):\n    n_plus_one(session)\n",
+    )
+    result = run(project)
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines(["*unknown value 'lazy-load'*"])
 
 
 def test_ini_budget_fails_an_over_budget_test(project: pytest.Pytester) -> None:

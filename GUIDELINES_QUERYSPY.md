@@ -144,7 +144,9 @@ the one ecosystem that already has working tools.
 - `Recorder.findings(threshold=...)` / `Recorder.query_count`.
 - pytest: the `queryspy` fixture, `@pytest.mark.queryspy(...)`,
   `--queryspy-strict`, and the `queryspy_budget` / `queryspy_fail_on` /
-  `queryspy_capture_stacks` ini options.
+  `queryspy_capture_stacks` ini options. `queryspy_fail_on` (and the marker's
+  `fail_on=`) takes `none`, `n_plus_one`, or a list of finding kinds; an
+  unknown name must fail loudly rather than gate nothing.
 
 All assertion failures subclass `AssertionError` so pytest renders them like a
 failed `assert`. A failing test body must never be masked by a queryspy
