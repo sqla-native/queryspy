@@ -4,4 +4,6 @@ aiosqlite>=0.19
 pytest>=8
 pytest-asyncio>=0.23
 queryspy
+# SQLAlchemy 2.1 no longer installs greenlet, which the async FastAPI example needs.
+sqlalchemy[asyncio]>=2.0
 flask>=3.0

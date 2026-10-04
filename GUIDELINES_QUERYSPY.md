@@ -85,6 +85,18 @@ why it rotted, and it is the first rule below.
 
 - Support line: **Python 3.10+, SQLAlchemy 2.0+**. `pytest` is an extra, never a
   dependency — `queryspy` must stay importable inside a production process.
+  CI proves the 2.0 floor (2.0.13), the newest 2.0.x and the newest release
+  (2.1 since 2026-09-24). A new SQLAlchemy minor is a support event, not a
+  dependency bump: run the examples' strict gate on it before claiming it.
+
+- **Anything that identifies a finding across runs must survive SQLAlchemy's
+  rendering changes.** 2.1 stopped writing a column alias per ORM `SELECT`
+  column (`project.id AS project_id` became `project.id`), which silently
+  re-keyed every `repeated_statement` baseline entry. Baseline identity
+  therefore compares labels with every `AS <alias>` removed
+  (`canonical_label` in `_baseline.py`), on both the finding and the file side,
+  so old files keep matching. Detection itself keys on the rendered text within
+  one run, where the version cannot change.
 
 ### 2. A false positive is worse than a missed detection
 

@@ -6,7 +6,15 @@ import json
 from pathlib import Path
 
 from queryspy import AppFrame, Finding
-from queryspy._baseline import BaselineEntry, entry_for, load, save, split, stale
+from queryspy._baseline import (
+    BaselineEntry,
+    canonical_label,
+    entry_for,
+    load,
+    save,
+    split,
+    stale,
+)
 
 
 def finding(**overrides: object) -> Finding:
@@ -123,3 +131,50 @@ def test_entry_as_dict_is_json_safe() -> None:
 
 def test_absolute_path_kept_when_no_root_given() -> None:
     assert entry_for(finding()).file == "/repo/app/users.py"
+
+
+# SQLAlchemy 2.0 renders an ORM SELECT with an alias per column and 2.1 does not.
+_SQLA_20 = (
+    "SELECT project.id AS project_id, project.name AS project_name"
+    " FROM project WHERE project.id = :pk_1"
+)
+_SQLA_21 = "SELECT project.id, project.name FROM project WHERE project.id = :pk_1"
+
+
+def test_identity_is_the_same_on_sqlalchemy_2_0_and_2_1() -> None:
+    on_20 = entry_for(finding(kind="repeated_statement", label=_SQLA_20), root="/repo")
+    on_21 = entry_for(finding(kind="repeated_statement", label=_SQLA_21), root="/repo")
+    assert on_20 == on_21
+    assert on_20.label == _SQLA_21
+
+
+def test_a_baseline_written_on_2_0_gates_a_run_on_2_1(tmp_path: Path) -> None:
+    """A file recorded with 2.0's aliases must neither go stale nor let the finding through."""
+    path = tmp_path / "baseline.json"
+    save(path, [finding(kind="repeated_statement", label=_SQLA_20)], version="0", root="/repo")
+    # Hand-written 2.0 labels on disk, as files saved before canonicalization have them.
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["entries"][0]["label"] = _SQLA_20
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    baseline = load(path)
+    on_21 = [finding(kind="repeated_statement", label=_SQLA_21)]
+    new, known = split(on_21, baseline, root="/repo")
+    assert (new, known) == ([], on_21)
+    assert stale(baseline, on_21, root="/repo") == []
+
+
+def test_canonical_label_drops_every_dialect_s_quoted_alias() -> None:
+    assert canonical_label('SELECT "Order".id AS "Order_id" FROM "Order"') == (
+        'SELECT "Order".id FROM "Order"'
+    )
+    assert canonical_label("SELECT `t`.`a` AS `t_a` FROM t") == "SELECT `t`.`a` FROM t"
+    assert canonical_label("SELECT [t].[a] AS [t_a] FROM [t]") == "SELECT [t].[a] FROM [t]"
+    assert canonical_label("SELECT count(*) AS count_1 FROM (SELECT x FROM y) AS anon_1") == (
+        "SELECT count(*) FROM (SELECT x FROM y)"
+    )
+
+
+def test_canonical_label_leaves_a_label_without_aliases_alone() -> None:
+    assert canonical_label("User.addresses") == "User.addresses"
+    assert canonical_label(_SQLA_21) == _SQLA_21

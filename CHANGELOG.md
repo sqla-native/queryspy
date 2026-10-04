@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A baseline no longer breaks when SQLAlchemy is upgraded to 2.1.** SQLAlchemy
+  2.0 renders an ORM `SELECT` with an alias per column
+  (`SELECT project.id AS project_id`) and 2.1 does not, and a
+  `repeated_statement` finding's baseline identity included that text. After the
+  upgrade every such entry reported "no longer occurs", and the same findings
+  came back as new and failed `--queryspy-strict`. Baseline labels are now
+  compared with every `AS <alias>` removed, both for findings and for entries
+  read from a file, so existing baselines keep working on either version.
+  Detection itself was unaffected.
+- **The examples install `sqlalchemy[asyncio]`.** SQLAlchemy 2.1 no longer
+  installs greenlet by default, and the async FastAPI example cannot import
+  without it. Async applications need the same extra.
+
+### CI
+
+- A new job runs the suite and the examples' strict gate on the newest
+  SQLAlchemy 2.0.x, against the same committed baseline as the 2.1 run.
+
 ## [0.4.1] - 2026-08-09
 
 ### Fixed

@@ -11,6 +11,12 @@ fixture grows and turns eleven queries into fourteen. Keying on either would
 make baselines expire constantly, which is the failure mode that makes people
 abandon them.
 
+**It is also stable across SQLAlchemy versions.** SQLAlchemy 2.0 renders an ORM
+``SELECT`` with an alias per column (``project.id AS project_id``) and 2.1 does
+not, so the same statement has two texts. Labels are compared with every
+``AS <alias>`` removed, which also lets a baseline recorded on one version gate
+a suite running on the other.
+
 **It also excludes which test found it.** Findings are attributed to the ORM
 call site, so two tests exercising the same helper produce one entry, not two.
 That is the intent: a baseline tracks code locations that have a problem, not
@@ -23,13 +29,27 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ._detect import Finding
 
-__all__ = ["BaselineEntry", "entry_for", "load", "save", "split", "stale"]
+__all__ = ["BaselineEntry", "canonical_label", "entry_for", "load", "save", "split", "stale"]
+
+# `AS` followed by one identifier, bare or quoted the way the dialects quote
+# them: "double", `backtick` or [bracket].
+_ALIAS = re.compile(r' AS (?:"[^"]*"|`[^`]*`|\[[^\]]*\]|\w+)')
+
+
+def canonical_label(label: str) -> str:
+    """``label`` with every ``AS <alias>`` removed.
+
+    The aliases are rendering, not identity: SQLAlchemy 2.0 writes
+    ``SELECT project.id AS project_id`` where 2.1 writes ``SELECT project.id``.
+    """
+    return _ALIAS.sub("", label)
 
 
 @dataclass(frozen=True)
@@ -68,21 +88,25 @@ def entry_for(finding: Finding, *, root: str | None = None) -> BaselineEntry:
     frame = finding.frame
     return BaselineEntry(
         kind=finding.kind,
-        label=finding.label,
+        label=canonical_label(finding.label),
         file=None if frame is None else _relative(frame.filename, root),
         function=None if frame is None else frame.function,
     )
 
 
 def load(path: Path) -> set[BaselineEntry]:
-    """Read a baseline file. A missing file is an empty baseline, not an error."""
+    """Read a baseline file. A missing file is an empty baseline, not an error.
+
+    Labels are canonicalized on the way in, so a file written with SQLAlchemy
+    2.0's aliases still matches.
+    """
     if not path.exists():
         return set()
     document = json.loads(path.read_text(encoding="utf-8"))
     return {
         BaselineEntry(
             kind=item["kind"],
-            label=item["label"],
+            label=canonical_label(item["label"]),
             file=item.get("file"),
             function=item.get("function"),
         )

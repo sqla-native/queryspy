@@ -170,6 +170,35 @@ jobs:
       # A broken link fails the PR rather than the deploy.
       - run: mkdocs build --strict
 
+  sqlalchemy-2-0:
+    name: Newest SQLAlchemy 2.0
+    runs-on: ubuntu-latest
+    # The other jobs resolve the newest SQLAlchemy, which is 2.1 since
+    # 2026-09-24, and the floor job pins 2.0.13. This one keeps the newest 2.0.x
+    # proven too, and runs the examples' strict gate on it against the same
+    # committed baseline as the 2.1 run: 2.0 renders ORM SELECTs with a column
+    # alias each and 2.1 does not, so this is what proves baseline identity
+    # holds across the two.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv pip install --system -e . --group dev "sqlalchemy[asyncio]>=2.0,<2.1"
+      - run: python -c "import sqlalchemy; print('sqlalchemy', sqlalchemy.__version__)"
+      - run: pytest -q
+      - run: uv pip install --system -r examples/requirements.txt "sqlalchemy[asyncio]>=2.0,<2.1"
+      - name: Examples under the strict gate
+        run: |
+          python -c "import sqlalchemy; assert sqlalchemy.__version__.startswith('2.0.'), sqlalchemy.__version__"
+          pytest examples -q --queryspy-strict \
+            --queryspy-baseline=examples/queryspy-baseline.json | tee examples-gate.log
+          if grep -q "no longer occur" examples-gate.log; then
+            echo "::error::a baselined finding stopped occurring - detection may have regressed"
+            exit 1
+          fi
+
   examples:
     name: Examples
     runs-on: ubuntu-latest
