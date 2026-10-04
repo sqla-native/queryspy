@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-04
+
 ### Added
 
 - **`queryspy_fail_on` takes a list of finding kinds** (#14). Besides `none` and
@@ -32,56 +34,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   installs greenlet by default, and the async FastAPI example cannot import
   without it. Async applications need the same extra.
 
-### CI
-
-- A new job runs the suite and the examples' strict gate on the newest
-  SQLAlchemy 2.0.x, against the same committed baseline as the 2.1 run.
-
-## [0.4.1] - 2026-08-09
-
-### Fixed
-
-- **Reporting could break the request it was observing.** The middleware reports
-  from a `finally` around the application call, and nothing guarded it. A
-  user-supplied `on_report` callback that raised — or a misconfigured logging
-  handler — would fail a request that was otherwise healthy, and, worse,
-  *replace* the application's own exception with the diagnostics one, destroying
-  the traceback the developer needed.
-
-  Reporting can no longer raise. Failures are logged with their own traceback
-  rather than swallowed silently; if the logger is what broke, there is nowhere
-  left to report it and the request still wins. Applies to both the ASGI and
-  WSGI middleware.
-
-  The pytest plugin always had this property — "a failing test body always wins"
-  — and it simply had never been extended to the middleware.
-
-### Added
-
-- Dependabot for dev tooling and GitHub Actions. Nothing here reaches consumers
-  (the production closure is SQLAlchemy alone), but an unmaintained toolchain
-  rots quietly.
-
-## [Unreleased]
-
-### Testing
-
-- **First mutation audit.** 1,547 mutants, **1,190 killed, 356 survived, 1
-  timeout — a 77% score against a suite at 100% branch coverage.** Seven
-  survivors were real gaps in the detection core and are now closed
-  (`tests/test_mutation_gaps.py`), most notably: "findings are worst first" was
-  documented in four places and asserted in none; a `continue` becoming `break`
-  in the grouping loop would have let one harmless early query suppress every
-  later finding; and the milliseconds conversion in timing could have been wrong
-  by a factor of a million without a single test noticing, because every timing
-  assertion only checked `> 0`.
-- **`TESTING.md`** — the nine verification layers, what each one proves, which
-  to run for what you changed, and the audit results.
-- **`scripts/verify.sh`** — runs the whole hermetic ladder in about a minute;
-  `--all` adds the real databases.
-
-### Fixed
-
 - The committed `[tool.mutmut]` config used deprecated keys and **crashed
   mutmut** on startup, so the workflow the constitution documented had never
   actually run.
@@ -103,9 +55,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fine, but Dependabot's github-actions updater had failed every weekly run
   since 2026-08-09 and produced no actions bumps. Quoted. (#15)
 
-
-### Fixed
-
 - Dependabot was configured to send version updates for Python dependencies,
   which are declared as floors rather than pins. Those PRs changed nothing —
   CI resolves to the latest matching release regardless — while narrowing the
@@ -117,7 +66,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 No library code changed, so there is nothing to release. What changed is the
 evidence that the library works.
 
+### CI
+
+- A new job runs the suite and the examples' strict gate on the newest
+  SQLAlchemy 2.0.x, against the same committed baseline as the 2.1 run.
+
 ### Testing
+
+- **First mutation audit.** 1,547 mutants, **1,190 killed, 356 survived, 1
+  timeout — a 77% score against a suite at 100% branch coverage.** Seven
+  survivors were real gaps in the detection core and are now closed
+  (`tests/test_mutation_gaps.py`), most notably: "findings are worst first" was
+  documented in four places and asserted in none; a `continue` becoming `break`
+  in the grouping loop would have let one harmless early query suppress every
+  later finding; and the milliseconds conversion in timing could have been wrong
+  by a factor of a million without a single test noticing, because every timing
+  assertion only checked `> 0`.
+- **`TESTING.md`** — the nine verification layers, what each one proves, which
+  to run for what you changed, and the audit results.
+- **`scripts/verify.sh`** — runs the whole hermetic ladder in about a minute;
+  `--all` adds the real databases.
 
 - **Real databases.** `tests/integration` runs the three detectors, source
   attribution, timing and the false-positive gate against **PostgreSQL and
@@ -156,6 +124,31 @@ evidence that the library works.
   backend's, so a finding's identity and therefore a baseline entry stay stable
   across SQLite, Postgres and MySQL. Backend placeholder styles (`%(id_1)s`,
   `%s`, `?`) must never leak into it.
+
+## [0.4.1] - 2026-08-09
+
+### Fixed
+
+- **Reporting could break the request it was observing.** The middleware reports
+  from a `finally` around the application call, and nothing guarded it. A
+  user-supplied `on_report` callback that raised — or a misconfigured logging
+  handler — would fail a request that was otherwise healthy, and, worse,
+  *replace* the application's own exception with the diagnostics one, destroying
+  the traceback the developer needed.
+
+  Reporting can no longer raise. Failures are logged with their own traceback
+  rather than swallowed silently; if the logger is what broke, there is nowhere
+  left to report it and the request still wins. Applies to both the ASGI and
+  WSGI middleware.
+
+  The pytest plugin always had this property — "a failing test body always wins"
+  — and it simply had never been extended to the middleware.
+
+### Added
+
+- Dependabot for dev tooling and GitHub Actions. Nothing here reaches consumers
+  (the production closure is SQLAlchemy alone), but an unmaintained toolchain
+  rots quietly.
 
 ## [0.4.0] - 2026-08-08
 
@@ -298,6 +291,7 @@ Initial release.
 - Async support with no extra setup — `AsyncSession` wraps a sync `Session`,
   and listeners are registered on the class.
 
+[0.5.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.5.0
 [0.4.1]: https://github.com/sqla-native/queryspy/releases/tag/v0.4.1
 [0.4.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.4.0
 [0.3.0]: https://github.com/sqla-native/queryspy/releases/tag/v0.3.0
