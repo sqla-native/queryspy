@@ -14,12 +14,12 @@ jobs:
     name: Tests, coverage, complexity (Python 3.12)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -53,7 +53,7 @@ jobs:
 
       - name: Restore base branch metrics
         if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ci-data
           key: ci-data-${{ github.base_ref }}-
@@ -61,7 +61,7 @@ jobs:
 
       - name: PR quality report
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const report = require('./.github/scripts/quality-report.js');
@@ -76,7 +76,7 @@ jobs:
           cp test-duration-ms.txt ci-data/test-duration-ms.txt
 
       - if: github.event_name == 'push'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ci-data
           key: ci-data-${{ github.ref_name }}-${{ github.sha }}
@@ -106,9 +106,9 @@ jobs:
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: uv pip install --system -e . --group dev
@@ -123,9 +123,9 @@ jobs:
     # the *test harness* uses AsyncAttrs, which arrived in 2.0.13 - so 2.0.13 is
     # the oldest version this suite can actually prove, not the oldest that works.
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: uv pip install --system -e . --group dev
@@ -137,9 +137,9 @@ jobs:
     name: Packaging and supply chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv pip install --system -e . --group dev build twine
@@ -161,9 +161,9 @@ jobs:
     name: Docs build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv pip install --system -e . --group dev
@@ -180,9 +180,9 @@ jobs:
     # alias each and 2.1 does not, so this is what proves baseline identity
     # holds across the two.
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv pip install --system -e . --group dev "sqlalchemy[asyncio]>=2.0,<2.1"
@@ -206,9 +206,9 @@ jobs:
     # counts, its concurrency isolation, and the SARIF shape against the real
     # app. Running them here is what stops them rotting.
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv pip install --system -e . --group dev
@@ -258,9 +258,9 @@ jobs:
           --health-cmd="mysqladmin ping -h 127.0.0.1 -pqueryspy"
           --health-interval=3s --health-timeout=5s --health-retries=40
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv pip install --system -e . --group dev
