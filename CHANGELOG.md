@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Python 3.15**, declared in the classifiers and run in the CI test matrix
+  next to 3.10 through 3.14. The floor stays at 3.10.
+
 ## [0.5.0] - 2026-10-04
 
 ### Added
