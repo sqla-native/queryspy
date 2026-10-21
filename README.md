@@ -267,7 +267,7 @@ Python 3.10+, SQLAlchemy 2.0+ (CI runs the 2.0 floor, the newest 2.0.x and
 2.1 no longer installs it by default.
 
 Tested against **SQLite, PostgreSQL and MySQL**, sync and async (`psycopg`,
-`asyncpg`, `pymysql`, `aiomysql`, `aiosqlite`), on Python 3.10 through 3.14. The
+`asyncpg`, `pymysql`, `aiomysql`, `aiosqlite`), on Python 3.10 through 3.15. The
 real-database suite runs in CI and fails if it skips.
 
 ## License
