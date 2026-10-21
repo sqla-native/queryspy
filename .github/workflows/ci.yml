@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A weekly run on main catches what moved underneath queryspy between
+  # pushes: SQLAlchemy, pytest, the drivers and the Python images. GitHub
+  # disables the schedule after 60 days without a push.
+  schedule:
+    - cron: "37 6 * * 1" # Mondays, 06:37 UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
