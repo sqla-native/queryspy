@@ -82,12 +82,12 @@ that — no patching, no private imports.
 
 ## Requirements
 
-Python 3.10+, SQLAlchemy 2.0+ (CI runs the 2.0 floor, the newest 2.0.x and
+Python 3.11+, SQLAlchemy 2.0+ (CI runs the 2.0 floor, the newest 2.0.x and
 2.1). Async code needs `sqlalchemy[asyncio]`, which brings greenlet: SQLAlchemy
 2.1 no longer installs it by default.
 
 Tested against **SQLite, PostgreSQL and MySQL**, sync and async (`psycopg`,
-`asyncpg`, `pymysql`, `aiomysql`, `aiosqlite`), on Python 3.10 through 3.15.
+`asyncpg`, `pymysql`, `aiomysql`, `aiosqlite`), on Python 3.11 through 3.15.
 
 The detectors, source attribution and timing are all exercised against real
 database servers in CI, not only SQLite — and that job fails if the specs skip,
