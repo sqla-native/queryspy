@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **Python 3.10**, which reached its end of life on 2026-10-01. `requires-python`
+  is now `>=3.11`, so pip keeps a Python 3.10 project on queryspy 0.5.1.
+
 ## [0.5.1] - 2026-10-21
 
 ### Added

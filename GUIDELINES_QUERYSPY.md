@@ -83,7 +83,7 @@ why it rotted, and it is the first rule below.
   the situation the fallback exists for. A sync-only install has no greenlet and
   degrades quietly to no fallback — which is covered by a test.
 
-- Support line: **Python 3.10+, SQLAlchemy 2.0+**. `pytest` is an extra, never a
+- Support line: **Python 3.11+, SQLAlchemy 2.0+**. `pytest` is an extra, never a
   dependency — `queryspy` must stay importable inside a production process.
   CI proves the 2.0 floor (2.0.13), the newest 2.0.x and the newest release
   (2.1 since 2026-09-24). A new SQLAlchemy minor is a support event, not a
